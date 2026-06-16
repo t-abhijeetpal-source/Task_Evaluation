@@ -1,0 +1,22 @@
+# Dependencies / virtualenvs
+node_modules/
+.venv/
+venv/
+
+# Build artifacts
+target/
+build/
+dist/
+.dart_tool/
+.gradle/
+
+# Python caches
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
