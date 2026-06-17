@@ -127,3 +127,11 @@ Indexes: `idx_expenses_category`, `idx_expenses_created_at`. Migration: `db/migr
 **Bottom line:** 6 agents independently built disjoint workstreams to a locked contract; the
 coordinator integrated and verified the system end-to-end — tests, live server, and a healthy
 Docker deployment — with no unresolved conflicts.
+
+
+## Screenshots
+
+**a2 ui dashboard**
+
+![a2 ui dashboard](../../screenshots/a2_ui_dashboard.png)
+

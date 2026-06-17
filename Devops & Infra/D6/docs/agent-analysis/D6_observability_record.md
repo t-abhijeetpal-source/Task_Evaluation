@@ -204,3 +204,27 @@ docker compose down -v
   2. **Instant Grafana query returned an empty frame** when run *after* traffic stopped — `rate(...[1m])` had decayed to no samples in the window. The genuine live-data proof required querying *during* continuous background load (range query). Verified: 4 non-zero series with 22–37 points each.
   3. **Structured logging required silencing uvicorn's own access logger** (`uvicorn.access` handlers cleared, `propagate=False`) — otherwise duplicate plain-text lines leaked alongside the JSON. Verified: container stdout is pure JSON lines.
   4. All metric/log field names, the Prometheus `UP` state, and the Grafana panel values in this document are copied from real command output, not assumed from library docs.
+
+
+## Screenshots
+
+**app docs**
+
+![app docs](../../screenshots/app-docs.png)
+
+**app metrics**
+
+![app metrics](../../screenshots/app-metrics.png)
+
+**grafana dashboard**
+
+![grafana dashboard](../../screenshots/grafana-dashboard.png)
+
+**prometheus graph**
+
+![prometheus graph](../../screenshots/prometheus-graph.png)
+
+**prometheus targets**
+
+![prometheus targets](../../screenshots/prometheus-targets.png)
+

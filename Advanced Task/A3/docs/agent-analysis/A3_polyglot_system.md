@@ -191,3 +191,15 @@ $ curl localhost:8000/transactions/txn_all
 - [x] README
 - [x] Verification Evidence (commands + outputs captured)
 - [x] A3_polyglot_system.md (this file)
+
+
+## Screenshots
+
+**a3 scored transaction**
+
+![a3 scored transaction](../../screenshots/a3_scored_transaction.png)
+
+**a3 swagger docs**
+
+![a3 swagger docs](../../screenshots/a3_swagger_docs.png)
+

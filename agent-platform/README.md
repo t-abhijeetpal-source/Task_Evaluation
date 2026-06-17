@@ -70,3 +70,31 @@ Fully static/SSG — zero config. (For the DB scale path, add `DATABASE_URL` and
 ## 📈 Performance
 SSG pages, no blocking client data, system fonts via `next/font`, code-split routes — targets
 95+ Lighthouse across Performance / Accessibility / SEO / Best Practices.
+
+
+## Screenshots
+
+**agent detail**
+
+![agent detail](screenshots/agent-detail.png)
+
+**agents real**
+
+![agents real](screenshots/agents-real.png)
+
+**agents twopane**
+
+![agents twopane](screenshots/agents-twopane.png)
+
+**agents**
+
+![agents](screenshots/agents.png)
+
+**dashboard**
+
+![dashboard](screenshots/dashboard.png)
+
+**evaluations**
+
+![evaluations](screenshots/evaluations.png)
+

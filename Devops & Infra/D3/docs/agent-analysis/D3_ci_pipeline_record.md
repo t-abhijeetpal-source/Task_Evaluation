@@ -223,3 +223,15 @@ local runner script, README, and this document.
 - [x] Dependency Cache (pip + docker gha) · [x] Lockfile Enforcement (pinned reqs)
 - [x] Failure Demonstration (exit 1, stage 2, fail-fast) · [x] Success Demonstration (all green)
 - [x] Logs · [x] README · [x] D3_ci_pipeline_record.md
+
+
+## Screenshots
+
+**add endpoint json**
+
+![add endpoint json](../../screenshots/add-endpoint-json.png)
+
+**service swagger docs**
+
+![service swagger docs](../../screenshots/service-swagger-docs.png)
+

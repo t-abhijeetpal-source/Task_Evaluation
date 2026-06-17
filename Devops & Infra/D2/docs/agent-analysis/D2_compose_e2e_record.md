@@ -237,3 +237,15 @@ INFO:     172.18.0.1 - "GET /jobs/2 HTTP/1.1" 200 OK
 - [x] D2_compose_e2e_record.md
 
 **All success criteria met; every mandatory command returned exit code 0.**
+
+
+## Screenshots
+
+**api jobs json**
+
+![api jobs json](../../screenshots/api-jobs-json.png)
+
+**api swagger docs**
+
+![api swagger docs](../../screenshots/api-swagger-docs.png)
+

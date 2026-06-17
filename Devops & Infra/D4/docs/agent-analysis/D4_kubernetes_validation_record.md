@@ -289,3 +289,15 @@ content-type: application/json
 * Five `curl` requests against the running Service returned the expected status codes and bodies, every one with exit code `0`.
 
 **D4 is empirically proven online.** Teardown: `kind delete cluster --name d4-cluster` (see README).
+
+
+## Screenshots
+
+**service root configmap**
+
+![service root configmap](../../screenshots/service-root-configmap.png)
+
+**service swagger docs**
+
+![service swagger docs](../../screenshots/service-swagger-docs.png)
+
