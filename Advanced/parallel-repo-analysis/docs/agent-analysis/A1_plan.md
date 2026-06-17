@@ -1,10 +1,4 @@
----
-name: tasks-parallel-repo-analysis
-description: >-
-  Orchestrates parallel multi-agent repository analysis across six independent lanes with cross-verification. Use when the user asks for parallel repo analysis, A1-style orchestration, or multi-lane codebase audit.
----
-
-# Parallel Repository Analysis
+# A1 — Parallel Repository Analysis: Orchestration Plan
 
 > Role: Principal Software Architect & Multi-Agent Coordinator.
 > Objective: demonstrate **effective parallel agent orchestration** — decompose, fan out 6

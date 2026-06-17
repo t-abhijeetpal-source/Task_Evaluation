@@ -21,9 +21,9 @@ containers healthy, plans clean) — never "looks done". Each task ships its own
 | Tier | Folder | Theme | Tasks |
 |---|---|---|---|
 | **Basics** | `Basics/` | Read a repo · build a small service | B1–B6 |
-| **Intermediate** | `Intermediate Task/` | Model · trace · change · integrate · containerize · debug | I1–I6 |
-| **Advanced** | `Advanced Task/` | Multi-agent orchestration · review · perf | A1–A6 |
-| **Devops & Infra** | `Devops & Infra/` | IaC · Compose · CI · observability · reproducibility · release | D1–D6 |
+| **Intermediate** | `Intermediate/` | Model · trace · change · integrate · containerize · debug | I1–I6 |
+| **Advanced** | `Advanced/` | Multi-agent orchestration · review · perf | A1–A6 |
+| **DevOps & Infra** | `DevOps-Infra/` | IaC · Compose · CI · Kubernetes · observability · reproducibility | D1–D6 |
 | **Platform** | `agent-platform/` | The website that showcases all of the above (Next.js, deployed) | — |
 
 ---
@@ -60,34 +60,39 @@ containers healthy, plans clean) — never "looks done". Each task ships its own
 
 > A5 found 3 blocking issues in A3; A3 was then **hardened + regression-tested** (fastapi 7 → 10).
 
-### 🟠 Devops & Infra (D1–D6)
-| # | Task | Demonstrates | Evidence |
-|---|---|---|---|
-| D1 | Terraform Plan | Pinned, validated IaC (S3 + Lambda + API GW) | `validate` 0 errors; clean plan (15 to add) |
-| D2 | Compose E2E Stack | API + PostgreSQL + worker, health-gated startup | build→up→seed→E2E→down, all exit 0 |
-| D3 | CI Pipeline | 5-stage GitHub Actions + cache + fail→fix demo | fail at stage 2 → fix → all green |
-| D4 | Observability | Structured logs + Prometheus metrics + health probes | scrape + probes verified (Prometheus/Grafana) |
-| D5 | Reproducible Dev Env | One-command `make bootstrap` (mise-pinned runtimes) | clean-slate **85/85 tests green** |
-| D6 | Release & Deploy | Semantic versioning + changelog + gated deploy | tagged release dry-run |
+### 🟠 DevOps & Infra (D1–D6)
+| # | Folder | Task | Demonstrates | Evidence |
+|---|---|---|---|---|
+| D1 | `terraform-aws-stack` | Terraform Plan | Pinned, validated IaC (S3 + Lambda + API GW) | `validate` 0 errors; clean plan (15 to add) |
+| D2 | `docker-compose-stack` | Compose E2E Stack | API + PostgreSQL + worker, health-gated startup | build→up→seed→E2E→down, all exit 0 |
+| D3 | `ci-pipeline` | CI Pipeline | 5-stage GitHub Actions + cache + fail→fix demo | fail at stage 2 → fix → all green |
+| D4 | `kubernetes-manifests` | Kubernetes Manifests | Deployment/Service/probes, validated on a local cluster | manifests applied + verified |
+| D5 | `reproducible-dev-env` | Reproducible Dev Env | One-command `make bootstrap` (mise-pinned runtimes) | clean-slate **85/85 tests green** |
+| D6 | `observability-bolt-on` | Observability | Structured logs + Prometheus metrics + health/readiness | scrape + probes verified (Prometheus/Grafana) |
 
 ---
 
 ## 🗂 Repository structure
+Folders are named for what they do (no cryptic codes):
 ```
 Task_Eval/
-├── Basics/              B1–B6
-├── Intermediate Task/   I1–I6
-├── Advanced Task/       A1–A6
-├── Devops & Infra/      D1–D6
-├── agent-platform/      Next.js website (deployed to Vercel)
-├── skills/              reusable task-agent skill definitions
-├── mise.toml            pinned runtimes (Python 3.12.7 · Node 22.11.0 · Rust 1.83.0)
-├── .tool-versions       asdf-compatible mirror
-├── .env.example         env-var template (copied to .env by `make setup-env`)
-├── Makefile             single-command entrypoint (`make bootstrap`)
-└── .github/workflows/   CI pipeline (D3)
+├── Basics/                 repo-structure-mapper · route-api-mapper · test-discovery ·
+│                           fastapi-transaction-service · node-transaction-service · rust-logcount-cli
+├── Intermediate/           er-diagram · flow-tracer · minimal-safe-change ·
+│                           polyglot-currency-pair · dockerize-service · bug-diagnosis
+├── Advanced/               parallel-repo-analysis · parallel-expense-tracker · polyglot-fraud-system ·
+│                           repo-modernization · adversarial-pr-review · performance-optimization
+├── DevOps-Infra/           terraform-aws-stack · docker-compose-stack · ci-pipeline ·
+│                           kubernetes-manifests · reproducible-dev-env · observability-bolt-on
+├── agent-platform/         Next.js website (deployed to Vercel)
+├── skills/                 reusable task-agent skill definitions
+├── mise.toml               pinned runtimes (Python 3.12.7 · Node 22.11.0 · Rust 1.83.0)
+├── .tool-versions          asdf-compatible mirror
+├── .env.example            env-var template (copied to .env by `make setup-env`)
+├── Makefile                single-command entrypoint (`make bootstrap`)
+└── .github/workflows/      CI pipeline
 ```
-Each task folder contains its implementation, tests, and a `docs/agent-analysis/<TASK>_*.md`
+Each task folder contains its implementation, tests, and a `docs/agent-analysis/*.md`
 record with commands, raw output, and the Agent-vs-Verified split.
 
 ---
@@ -125,8 +130,8 @@ Next.js 16 + React 19 + TypeScript + Tailwind v4 + Framer Motion (the platform).
 
 ## 📄 Records & honesty
 - Per task: `docs/agent-analysis/<TASK>_*.md` (+ `VERIFICATION_RESULTS.md` where applicable).
-- Consolidated: `Advanced Task/A1/.../A1_repository_master_report.md`, `Advanced Task/VALIDATION_REPORT.md`,
-  `Basics/BASICS_ENHANCEMENT_REPORT.md`, `Devops & Infra/*/docs/agent-analysis/`.
+- Consolidated: `Advanced/parallel-repo-analysis/.../A1_repository_master_report.md`, `Advanced/VALIDATION_REPORT.md`,
+  `Basics/BASICS_ENHANCEMENT_REPORT.md`, `DevOps-Infra/*/docs/agent-analysis/`.
 - Limitations and environment blockers (disk, corporate TLS proxy) are documented honestly where they occurred.
 
 ---

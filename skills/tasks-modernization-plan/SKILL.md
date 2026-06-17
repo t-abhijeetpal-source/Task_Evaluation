@@ -58,7 +58,7 @@ Produce a prioritized modernization backlog with a scoring matrix, then **execut
 .PHONY: test-all test-b4 test-b5 test-b6
 test-all: test-b4 test-b5 test-b6
 test-b4:
-	cd Basics/B4 && .venv/bin/pytest -v
+	cd Basics/fastapi-transaction-service && .venv/bin/pytest -v
 ```
 
 ## Verification Rules

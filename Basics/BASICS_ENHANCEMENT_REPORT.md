@@ -53,7 +53,7 @@ flows, B3's CI-command-is-canonical + Agent-vs-Verified split, B4/B5/B6 actually
 
 **Command:** enhanced B1 (default depth) executed against
 `android-monorepo/flutter/pml-flutter`. **Artifact:**
-`Basics/B1/B1_repo_inventory_pml-flutter.md` (34 KB).
+`Basics/repo-structure-mapper/B1_repo_inventory_pml-flutter.md` (34 KB).
 
 **Findings (highlights):**
 - 18 feature modules; ~63 ViewModels; ~104 repository files (abstract in `domain/`, impl in `data/`);

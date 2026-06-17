@@ -13,11 +13,11 @@ concurrency:
 
 defaults:
   run:
-    working-directory: "Devops & Infra/D3"
+    working-directory: "DevOps-Infra/ci-pipeline"
 
 env:
   PYTHON_VERSION: "3.12"
-  DEV_LOCK: "Devops & Infra/D3/requirements-dev.txt"
+  DEV_LOCK: "DevOps-Infra/ci-pipeline/requirements-dev.txt"
 
 jobs:
   # ---- Stage 1: Lint (parallel with unit-tests) -------------------------------
@@ -93,7 +93,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: d3-app-build
-          path: "Devops & Infra/D3/d3-app-${{ github.run_number }}.zip"
+          path: "DevOps-Infra/ci-pipeline/d3-app-${{ github.run_number }}.zip"
           retention-days: 7
       - run: echo "### ✅ Stage 4 Build + artifact published" >> "$GITHUB_STEP_SUMMARY"
 
@@ -108,7 +108,7 @@ jobs:
       - name: Build image (no push)
         uses: docker/build-push-action@v6
         with:
-          context: "Devops & Infra/D3"
+          context: "DevOps-Infra/ci-pipeline"
           push: false
           load: true
           tags: |

@@ -12,10 +12,22 @@ const OUT = path.resolve(__dirname, "../src/content/agents-content.json");
 
 const TIERS = [
   ["Basics", "Basics"],
-  ["Intermediate Task", "Intermediate"],
-  ["Advanced Task", "Advanced"],
-  ["Devops & Infra", "Infrastructure"],
+  ["Intermediate", "Intermediate"],
+  ["Advanced", "Advanced"],
+  ["DevOps-Infra", "Infrastructure"],
 ];
+
+// Folders are now descriptive (no codes); map folder name -> short code the UI uses.
+const NAME2CODE = {
+  "repo-structure-mapper": "B1", "route-api-mapper": "B2", "test-discovery": "B3",
+  "fastapi-transaction-service": "B4", "node-transaction-service": "B5", "rust-logcount-cli": "B6",
+  "er-diagram": "I1", "flow-tracer": "I2", "minimal-safe-change": "I3",
+  "polyglot-currency-pair": "I4", "dockerize-service": "I5", "bug-diagnosis": "I6",
+  "parallel-repo-analysis": "A1", "parallel-expense-tracker": "A2", "polyglot-fraud-system": "A3",
+  "repo-modernization": "A4", "adversarial-pr-review": "A5", "performance-optimization": "A6",
+  "terraform-aws-stack": "D1", "docker-compose-stack": "D2", "ci-pipeline": "D3",
+  "kubernetes-manifests": "D4", "reproducible-dev-env": "D5", "observability-bolt-on": "D6",
+};
 
 const SKIP_DIR = new Set(["node_modules", ".next", ".venv", "target", "build", ".git", "screenshots"]);
 
@@ -53,8 +65,8 @@ for (const [folder, tier] of TIERS) {
   try { subs = await fs.readdir(tdir, { withFileTypes: true }); } catch { continue; }
   for (const s of subs) {
     if (!s.isDirectory()) continue;
-    const code = s.name;
-    if (!/^[A-Z]\d+$/.test(code)) continue;
+    const code = NAME2CODE[s.name];
+    if (!code) continue;
     const adir = path.join(tdir, s.name);
 
     let definition = null, definitionFile = null;

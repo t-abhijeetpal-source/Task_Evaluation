@@ -73,7 +73,7 @@ Canonical skill files live in the Tasks repo:
 Tasks/skills/tasks-*/SKILL.md
 ```
 
-Original agent specs remain at `Basics/B*_agent.md`, `Intermediate Task/I*_agent.md`, and `Advanced Task/A*/docs/`.
+Original agent specs remain at `Basics/B*_agent.md`, `Intermediate/I*_agent.md`, and `Advanced/A*/docs/`.
 
 ## Install
 

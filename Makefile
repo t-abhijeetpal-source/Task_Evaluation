@@ -14,9 +14,9 @@ else
 endif
 
 # Independently-buildable projects (paths quoted: some contain spaces).
-PY_PROJECTS   := "Basics/B4" "Intermediate Task/I6" "Advanced Task/A2" "Advanced Task/A3/fastapi-service" "Intermediate Task/I4/fastapi-service"
-NODE_PROJECTS := "Basics/B5" "Intermediate Task/I4/node-client" "Advanced Task/A3/node-worker"
-RUST_PROJECTS := "Basics/B6" "Advanced Task/A3/rust-engine"
+PY_PROJECTS   := "Basics/fastapi-transaction-service" "Intermediate/bug-diagnosis" "Advanced/parallel-expense-tracker" "Advanced/polyglot-fraud-system/fastapi-service" "Intermediate/polyglot-currency-pair/fastapi-service"
+NODE_PROJECTS := "Basics/node-transaction-service" "Intermediate/polyglot-currency-pair/node-client" "Advanced/polyglot-fraud-system/node-worker"
+RUST_PROJECTS := "Basics/rust-logcount-cli" "Advanced/polyglot-fraud-system/rust-engine"
 
 .PHONY: help bootstrap doctor setup-env verify test rust node python a3-integration clean
 
@@ -60,7 +60,7 @@ test: rust node python  ## Run every test suite (Rust + Node + Python)
 	@echo "== ALL SUITES PASSED =="
 
 a3-integration:  ## Run the A3 polyglot end-to-end integration test
-	@bash "Advanced Task/A3/integration-tests/run_integration.sh"
+	@bash "Advanced/polyglot-fraud-system/integration-tests/run_integration.sh"
 
 clean:  ## Remove generated venvs / node_modules / build artifacts
 	@find . -type d \( -name .venv -o -name node_modules -o -name target \
