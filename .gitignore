@@ -25,3 +25,8 @@ __pycache__/
 data/
 *.db
 *.sqlite3
+
+# A3 runtime / integration scratch
+runtime/
+.run/
+*.log

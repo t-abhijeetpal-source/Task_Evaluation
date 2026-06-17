@@ -1,0 +1,16 @@
+{
+  "name": "a3-fraud-worker",
+  "version": "1.0.0",
+  "description": "A3 Fraud Processing Worker — reads queue files, scores via the Rust engine, posts results to FastAPI.",
+  "main": "src/worker.js",
+  "scripts": {
+    "start": "node src/worker.js",
+    "test": "jest"
+  },
+  "dependencies": {
+    "axios": "^1.7"
+  },
+  "devDependencies": {
+    "jest": "^29"
+  }
+}
