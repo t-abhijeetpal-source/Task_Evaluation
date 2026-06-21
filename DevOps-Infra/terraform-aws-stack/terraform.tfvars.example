@@ -1,0 +1,16 @@
+# Example overrides. Copy to terraform.tfvars and edit, or pass via -var.
+# All variables have sensible defaults; nothing here is required to plan.
+
+# project_name = "d1-svc"
+# environment  = "dev"
+# aws_region   = "ap-south-1"
+
+# Tighten the function's blast radius and add ownership tags in prod:
+# lambda_reserved_concurrency = 10
+# tags = {
+#   owner       = "platform-team"
+#   cost-center = "1234"
+# }
+
+# Real applies set this to false (also done by the CI apply job):
+# offline_mode = false

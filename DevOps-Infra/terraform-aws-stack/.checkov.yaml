@@ -1,0 +1,13 @@
+# Checkov configuration for the D1 Terraform stack.
+# Per-resource exceptions are expressed as inline `# checkov:skip=...:reason`
+# comments next to the resource (auditable in context), not blanket skips here.
+framework:
+  - terraform
+quiet: true
+compact: true
+# Scan the static configuration; the local build/ artifact and provider plugins
+# are not Terraform source.
+skip-path:
+  - build
+  - .terraform
+download-external-modules: false

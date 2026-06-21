@@ -1,19 +1,17 @@
 provider "aws" {
   region = var.aws_region
 
-  # Mock credentials + skips so `terraform plan` runs fully offline (no real
-  # AWS account, STS, or IMDS calls). Replace/remove for a real apply.
-  access_key                  = "mock-access-key-id"
-  secret_key                  = "mock-secret-access-key"
-  skip_credentials_validation = true
-  skip_requesting_account_id  = true
-  skip_metadata_api_check     = true
+  # Offline mode (default): mock credentials + skip flags so `terraform plan`
+  # runs fully offline — no real account, STS, or IMDS calls. For a real apply,
+  # set -var='offline_mode=false' (the CI apply job does this) so Terraform
+  # falls back to the standard credential chain (OIDC / profile / env).
+  access_key                  = var.offline_mode ? "mock-access-key-id" : null
+  secret_key                  = var.offline_mode ? "mock-secret-access-key" : null
+  skip_credentials_validation = var.offline_mode
+  skip_requesting_account_id  = var.offline_mode
+  skip_metadata_api_check     = var.offline_mode
 
   default_tags {
-    tags = {
-      Project     = var.project_name
-      Environment = var.environment
-      ManagedBy   = "terraform"
-    }
+    tags = local.common_tags
   }
 }

@@ -1,5 +1,5 @@
 data.archive_file.lambda: Reading...
-data.archive_file.lambda: Read complete after 0s [id=ca0f9f143bb0e11eae77c5e5c2ad4e5af18023cb]
+data.archive_file.lambda: Read complete after 0s [id=61281741aae3718898199e0b4481f2153e23aa31]
 data.aws_iam_policy_document.lambda_assume: Reading...
 data.aws_iam_policy_document.lambda_assume: Read complete after 0s [id=2690255455]
 
@@ -10,24 +10,152 @@ plan. Resource actions are indicated with the following symbols:
 
 Terraform will perform the following actions:
 
-  # data.aws_iam_policy_document.lambda_s3 will be read during apply
+  # data.aws_iam_policy_document.data_bucket will be read during apply
   # (config refers to values not yet known)
- <= data "aws_iam_policy_document" "lambda_s3" {
+ <= data "aws_iam_policy_document" "data_bucket" {
       + id            = (known after apply)
       + json          = (known after apply)
       + minified_json = (known after apply)
 
       + statement {
           + actions   = [
+              + "s3:*",
+            ]
+          + effect    = "Deny"
+          + resources = [
+              + (known after apply),
+              + (known after apply),
+            ]
+          + sid       = "DenyInsecureTransport"
+
+          + condition {
+              + test     = "Bool"
+              + values   = [
+                  + "false",
+                ]
+              + variable = "aws:SecureTransport"
+            }
+
+          + principals {
+              + identifiers = [
+                  + "*",
+                ]
+              + type        = "AWS"
+            }
+        }
+    }
+
+  # data.aws_iam_policy_document.lambda will be read during apply
+  # (config refers to values not yet known)
+ <= data "aws_iam_policy_document" "lambda" {
+      + id            = (known after apply)
+      + json          = (known after apply)
+      + minified_json = (known after apply)
+
+      + statement {
+          + actions   = [
+              + "logs:CreateLogStream",
+              + "logs:PutLogEvents",
+            ]
+          + effect    = "Allow"
+          + resources = [
+              + (known after apply),
+            ]
+          + sid       = "ScopedCloudWatchLogs"
+        }
+      + statement {
+          + actions   = [
               + "s3:GetObject",
-              + "s3:ListBucket",
               + "s3:PutObject",
             ]
           + effect    = "Allow"
           + resources = [
               + (known after apply),
+            ]
+          + sid       = "ReadWriteDataBucketObjects"
+        }
+      + statement {
+          + actions   = [
+              + "s3:ListBucket",
+            ]
+          + effect    = "Allow"
+          + resources = [
               + (known after apply),
             ]
+          + sid       = "ListDataBucket"
+        }
+      + statement {
+          + actions   = [
+              + "kms:Decrypt",
+              + "kms:DescribeKey",
+              + "kms:Encrypt",
+              + "kms:GenerateDataKey",
+            ]
+          + effect    = "Allow"
+          + resources = [
+              + (known after apply),
+            ]
+          + sid       = "UseCmkForS3AndEnv"
+        }
+    }
+
+  # data.aws_iam_policy_document.logs_bucket will be read during apply
+  # (config refers to values not yet known)
+ <= data "aws_iam_policy_document" "logs_bucket" {
+      + id            = (known after apply)
+      + json          = (known after apply)
+      + minified_json = (known after apply)
+
+      + statement {
+          + actions   = [
+              + "s3:PutObject",
+            ]
+          + effect    = "Allow"
+          + resources = [
+              + (known after apply),
+            ]
+          + sid       = "AllowS3ServerAccessLogDelivery"
+
+          + condition {
+              + test     = "ArnLike"
+              + values   = [
+                  + (known after apply),
+                ]
+              + variable = "aws:SourceArn"
+            }
+
+          + principals {
+              + identifiers = [
+                  + "logging.s3.amazonaws.com",
+                ]
+              + type        = "Service"
+            }
+        }
+      + statement {
+          + actions   = [
+              + "s3:*",
+            ]
+          + effect    = "Deny"
+          + resources = [
+              + (known after apply),
+              + (known after apply),
+            ]
+          + sid       = "DenyInsecureTransport"
+
+          + condition {
+              + test     = "Bool"
+              + values   = [
+                  + "false",
+                ]
+              + variable = "aws:SecureTransport"
+            }
+
+          + principals {
+              + identifiers = [
+                  + "*",
+                ]
+              + type        = "AWS"
+            }
         }
     }
 
@@ -87,6 +215,48 @@ Terraform will perform the following actions:
           + "ManagedBy"   = "terraform"
           + "Project"     = "d1-svc"
         }
+
+      + access_log_settings {
+          + destination_arn = (known after apply)
+          + format          = jsonencode(
+                {
+                  + httpMethod      = "$context.httpMethod"
+                  + integrationErr  = "$context.integrationErrorMessage"
+                  + ip              = "$context.identity.sourceIp"
+                  + protocol        = "$context.protocol"
+                  + requestId       = "$context.requestId"
+                  + requestTime     = "$context.requestTime"
+                  + responseLatency = "$context.responseLatency"
+                  + responseLength  = "$context.responseLength"
+                  + routeKey        = "$context.routeKey"
+                  + status          = "$context.status"
+                }
+            )
+        }
+
+      + default_route_settings {
+          + data_trace_enabled       = false
+          + detailed_metrics_enabled = false
+          + logging_level            = (known after apply)
+          + throttling_burst_limit   = 50
+          + throttling_rate_limit    = 100
+        }
+    }
+
+  # aws_cloudwatch_log_group.apigw will be created
+  + resource "aws_cloudwatch_log_group" "apigw" {
+      + arn               = (known after apply)
+      + id                = (known after apply)
+      + log_group_class   = (known after apply)
+      + name              = "/aws/apigateway/d1-svc-dev-http"
+      + name_prefix       = (known after apply)
+      + retention_in_days = 14
+      + skip_destroy      = false
+      + tags_all          = {
+          + "Environment" = "dev"
+          + "ManagedBy"   = "terraform"
+          + "Project"     = "d1-svc"
+        }
     }
 
   # aws_cloudwatch_log_group.lambda will be created
@@ -140,20 +310,45 @@ Terraform will perform the following actions:
       + inline_policy (known after apply)
     }
 
-  # aws_iam_role_policy.lambda_s3 will be created
-  + resource "aws_iam_role_policy" "lambda_s3" {
+  # aws_iam_role_policy.lambda will be created
+  + resource "aws_iam_role_policy" "lambda" {
       + id          = (known after apply)
-      + name        = "d1-svc-dev-lambda-s3"
+      + name        = "d1-svc-dev-lambda-policy"
       + name_prefix = (known after apply)
       + policy      = (known after apply)
       + role        = (known after apply)
     }
 
-  # aws_iam_role_policy_attachment.lambda_basic will be created
-  + resource "aws_iam_role_policy_attachment" "lambda_basic" {
-      + id         = (known after apply)
-      + policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-      + role       = "d1-svc-dev-lambda-role"
+  # aws_kms_alias.main will be created
+  + resource "aws_kms_alias" "main" {
+      + arn            = (known after apply)
+      + id             = (known after apply)
+      + name           = "alias/d1-svc-dev"
+      + name_prefix    = (known after apply)
+      + target_key_arn = (known after apply)
+      + target_key_id  = (known after apply)
+    }
+
+  # aws_kms_key.main will be created
+  + resource "aws_kms_key" "main" {
+      + arn                                = (known after apply)
+      + bypass_policy_lockout_safety_check = false
+      + customer_master_key_spec           = "SYMMETRIC_DEFAULT"
+      + deletion_window_in_days            = 30
+      + description                        = "d1-svc-dev CMK for S3 data + Lambda env encryption"
+      + enable_key_rotation                = true
+      + id                                 = (known after apply)
+      + is_enabled                         = true
+      + key_id                             = (known after apply)
+      + key_usage                          = "ENCRYPT_DECRYPT"
+      + multi_region                       = (known after apply)
+      + policy                             = (known after apply)
+      + rotation_period_in_days            = (known after apply)
+      + tags_all                           = {
+          + "Environment" = "dev"
+          + "ManagedBy"   = "terraform"
+          + "Project"     = "d1-svc"
+        }
     }
 
   # aws_lambda_function.api will be created
@@ -166,6 +361,7 @@ Terraform will perform the following actions:
       + handler                        = "handler.handler"
       + id                             = (known after apply)
       + invoke_arn                     = (known after apply)
+      + kms_key_arn                    = (known after apply)
       + last_modified                  = (known after apply)
       + memory_size                    = 128
       + package_type                   = "Zip"
@@ -178,7 +374,7 @@ Terraform will perform the following actions:
       + signing_job_arn                = (known after apply)
       + signing_profile_version_arn    = (known after apply)
       + skip_destroy                   = false
-      + source_code_hash               = "HwPfS8EDDC9T7VD3L0MXP6xQEqgvTkJyR5EBVtF39Tc="
+      + source_code_hash               = "J/8aDLhTR0Xi4jgQRhRy+go7wxEGl5Acu7mWIPlyzRs="
       + source_code_size               = (known after apply)
       + tags_all                       = {
           + "Environment" = "dev"
@@ -219,7 +415,7 @@ Terraform will perform the following actions:
       + bucket_domain_name          = (known after apply)
       + bucket_prefix               = (known after apply)
       + bucket_regional_domain_name = (known after apply)
-      + force_destroy               = true
+      + force_destroy               = false
       + hosted_zone_id              = (known after apply)
       + id                          = (known after apply)
       + object_lock_enabled         = (known after apply)
@@ -253,8 +449,160 @@ Terraform will perform the following actions:
       + website (known after apply)
     }
 
+  # aws_s3_bucket.logs will be created
+  + resource "aws_s3_bucket" "logs" {
+      + acceleration_status         = (known after apply)
+      + acl                         = (known after apply)
+      + arn                         = (known after apply)
+      + bucket                      = (known after apply)
+      + bucket_domain_name          = (known after apply)
+      + bucket_prefix               = (known after apply)
+      + bucket_regional_domain_name = (known after apply)
+      + force_destroy               = false
+      + hosted_zone_id              = (known after apply)
+      + id                          = (known after apply)
+      + object_lock_enabled         = (known after apply)
+      + policy                      = (known after apply)
+      + region                      = (known after apply)
+      + request_payer               = (known after apply)
+      + tags_all                    = {
+          + "Environment" = "dev"
+          + "ManagedBy"   = "terraform"
+          + "Project"     = "d1-svc"
+        }
+      + website_domain              = (known after apply)
+      + website_endpoint            = (known after apply)
+
+      + cors_rule (known after apply)
+
+      + grant (known after apply)
+
+      + lifecycle_rule (known after apply)
+
+      + logging (known after apply)
+
+      + object_lock_configuration (known after apply)
+
+      + replication_configuration (known after apply)
+
+      + server_side_encryption_configuration (known after apply)
+
+      + versioning (known after apply)
+
+      + website (known after apply)
+    }
+
+  # aws_s3_bucket_lifecycle_configuration.data will be created
+  + resource "aws_s3_bucket_lifecycle_configuration" "data" {
+      + bucket                                 = (known after apply)
+      + expected_bucket_owner                  = (known after apply)
+      + id                                     = (known after apply)
+      + transition_default_minimum_object_size = "all_storage_classes_128K"
+
+      + rule {
+          + id     = "manage-noncurrent-and-incomplete"
+          + status = "Enabled"
+            # (1 unchanged attribute hidden)
+
+          + abort_incomplete_multipart_upload {
+              + days_after_initiation = 7
+            }
+
+          + filter {
+                # (1 unchanged attribute hidden)
+            }
+
+          + noncurrent_version_expiration {
+              + noncurrent_days = 90
+            }
+        }
+    }
+
+  # aws_s3_bucket_lifecycle_configuration.logs will be created
+  + resource "aws_s3_bucket_lifecycle_configuration" "logs" {
+      + bucket                                 = (known after apply)
+      + expected_bucket_owner                  = (known after apply)
+      + id                                     = (known after apply)
+      + transition_default_minimum_object_size = "all_storage_classes_128K"
+
+      + rule {
+          + id     = "expire-access-logs"
+          + status = "Enabled"
+            # (1 unchanged attribute hidden)
+
+          + abort_incomplete_multipart_upload {
+              + days_after_initiation = 7
+            }
+
+          + expiration {
+              + days                         = 90
+              + expired_object_delete_marker = false
+            }
+
+          + filter {
+                # (1 unchanged attribute hidden)
+            }
+
+          + noncurrent_version_expiration {
+              + noncurrent_days = 30
+            }
+        }
+    }
+
+  # aws_s3_bucket_logging.data will be created
+  + resource "aws_s3_bucket_logging" "data" {
+      + bucket        = (known after apply)
+      + id            = (known after apply)
+      + target_bucket = (known after apply)
+      + target_prefix = "s3-access/"
+    }
+
+  # aws_s3_bucket_ownership_controls.data will be created
+  + resource "aws_s3_bucket_ownership_controls" "data" {
+      + bucket = (known after apply)
+      + id     = (known after apply)
+
+      + rule {
+          + object_ownership = "BucketOwnerEnforced"
+        }
+    }
+
+  # aws_s3_bucket_ownership_controls.logs will be created
+  + resource "aws_s3_bucket_ownership_controls" "logs" {
+      + bucket = (known after apply)
+      + id     = (known after apply)
+
+      + rule {
+          + object_ownership = "BucketOwnerEnforced"
+        }
+    }
+
+  # aws_s3_bucket_policy.data will be created
+  + resource "aws_s3_bucket_policy" "data" {
+      + bucket = (known after apply)
+      + id     = (known after apply)
+      + policy = (known after apply)
+    }
+
+  # aws_s3_bucket_policy.logs will be created
+  + resource "aws_s3_bucket_policy" "logs" {
+      + bucket = (known after apply)
+      + id     = (known after apply)
+      + policy = (known after apply)
+    }
+
   # aws_s3_bucket_public_access_block.data will be created
   + resource "aws_s3_bucket_public_access_block" "data" {
+      + block_public_acls       = true
+      + block_public_policy     = true
+      + bucket                  = (known after apply)
+      + id                      = (known after apply)
+      + ignore_public_acls      = true
+      + restrict_public_buckets = true
+    }
+
+  # aws_s3_bucket_public_access_block.logs will be created
+  + resource "aws_s3_bucket_public_access_block" "logs" {
       + block_public_acls       = true
       + block_public_policy     = true
       + bucket                  = (known after apply)
@@ -269,6 +617,23 @@ Terraform will perform the following actions:
       + id     = (known after apply)
 
       + rule {
+          + bucket_key_enabled = true
+
+          + apply_server_side_encryption_by_default {
+              + kms_master_key_id = (known after apply)
+              + sse_algorithm     = "aws:kms"
+            }
+        }
+    }
+
+  # aws_s3_bucket_server_side_encryption_configuration.logs will be created
+  + resource "aws_s3_bucket_server_side_encryption_configuration" "logs" {
+      + bucket = (known after apply)
+      + id     = (known after apply)
+
+      + rule {
+          + bucket_key_enabled = true
+
           + apply_server_side_encryption_by_default {
               + sse_algorithm     = "AES256"
                 # (1 unchanged attribute hidden)
@@ -278,6 +643,17 @@ Terraform will perform the following actions:
 
   # aws_s3_bucket_versioning.data will be created
   + resource "aws_s3_bucket_versioning" "data" {
+      + bucket = (known after apply)
+      + id     = (known after apply)
+
+      + versioning_configuration {
+          + mfa_delete = (known after apply)
+          + status     = "Enabled"
+        }
+    }
+
+  # aws_s3_bucket_versioning.logs will be created
+  + resource "aws_s3_bucket_versioning" "logs" {
       + bucket = (known after apply)
       + id     = (known after apply)
 
@@ -297,12 +673,14 @@ Terraform will perform the following actions:
       + id          = (known after apply)
     }
 
-Plan: 15 to add, 0 to change, 0 to destroy.
+Plan: 28 to add, 0 to change, 0 to destroy.
 
 Changes to Outputs:
   + api_endpoint         = (known after apply)
+  + kms_key_arn          = (known after apply)
   + lambda_function_name = "d1-svc-dev-fn"
   + lambda_role_arn      = (known after apply)
+  + logs_bucket_name     = (known after apply)
   + s3_bucket_name       = (known after apply)
 
 ─────────────────────────────────────────────────────────────────────────────

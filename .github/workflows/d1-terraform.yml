@@ -1,0 +1,132 @@
+name: D1 Terraform
+
+# Validates the S3 + Lambda + API Gateway IaC on every change:
+#   handler-tests ─┐
+#   terraform      ─┴─▶ (manual) apply via OIDC
+# The terraform job runs a FULLY OFFLINE plan (mock creds + skip flags in
+# providers.tf) — no AWS account or secrets are required for PR validation.
+on:
+  push:
+    paths:
+      - "DevOps-Infra/terraform-aws-stack/**"
+      - ".github/workflows/d1-terraform.yml"
+  pull_request:
+    paths:
+      - "DevOps-Infra/terraform-aws-stack/**"
+      - ".github/workflows/d1-terraform.yml"
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Run terraform apply against a real account (OIDC)"
+        type: boolean
+        default: false
+
+# Least privilege by default; the apply job widens to request an OIDC token.
+permissions:
+  contents: read
+
+concurrency:
+  group: d1-terraform-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: DevOps-Infra/terraform-aws-stack
+
+env:
+  TF_VERSION: "1.15.6"
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # ---- Handler unit tests (parallel with terraform) ---------------------------
+  handler-tests:
+    name: Handler unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: DevOps-Infra/terraform-aws-stack/requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      # pytest.ini enforces --cov=src --cov-fail-under=90 (the coverage gate).
+      - run: python -m pytest
+      - run: echo "### ✅ Handler unit tests + coverage gate (≥90%) passed" >> "$GITHUB_STEP_SUMMARY"
+
+  # ---- Terraform: fmt, validate, offline plan, lint, security scan ------------
+  terraform:
+    name: Validate · Plan (offline) · tflint · checkov
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: terraform fmt (check)
+        run: terraform fmt -check -recursive
+
+      - name: terraform init (no backend)
+        run: terraform init -backend=false -input=false
+
+      - name: terraform validate
+        run: terraform validate
+
+      # Offline plan: providers.tf supplies mock creds + skip flags, so no AWS
+      # account, STS, or IMDS calls happen. Fails the build on any plan error.
+      - name: terraform plan (offline)
+        run: terraform plan -input=false -no-color
+
+      - uses: terraform-linters/setup-tflint@90f302c255ef959cbfb4bd10581afecdb7ece3e6 # v4.1.1
+        with:
+          tflint_version: v0.58.0
+      - name: tflint
+        run: |
+          tflint --init
+          tflint -f compact
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: checkov (terraform security scan)
+        run: |
+          pip install checkov
+          checkov -d . --config-file .checkov.yaml
+
+      - run: echo "### ✅ fmt · validate · offline plan · tflint · checkov all passed" >> "$GITHUB_STEP_SUMMARY"
+
+  # ---- Optional real apply (manual, OIDC — no long-lived secrets) -------------
+  # Requires repo/org config: vars.AWS_DEPLOY_ROLE_ARN (an IAM role trusting this
+  # repo's GitHub OIDC provider) and a protected `production` environment.
+  apply:
+    name: Apply (real account, OIDC)
+    needs: [handler-tests, terraform]
+    if: github.event_name == 'workflow_dispatch' && inputs.apply
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    permissions:
+      contents: read
+      id-token: write # mint the OIDC token for AWS role assumption
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: aws-actions/configure-aws-credentials@b47578312673ae6fa5b5096b330d9fbac3d116df # v4.2.1
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-south-1' }}
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - name: terraform init
+        run: terraform init -input=false
+      # offline_mode=false disables the mock keys/skip flags so the provider
+      # uses the OIDC credentials configure-aws-credentials just exported.
+      - name: terraform apply
+        run: terraform apply -input=false -auto-approve -var='offline_mode=false'
+      - run: echo "### ✅ Applied to AWS via OIDC" >> "$GITHUB_STEP_SUMMARY"

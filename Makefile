@@ -45,7 +45,10 @@ BASICS_DIR := Basics
 # D5 reproducible dev environment (self-contained FastAPI demo; its own pinned mise.toml).
 D5_DIR := DevOps-Infra/reproducible-dev-env
 
-.PHONY: help bootstrap doctor setup-env verify test rust node python i1-verify i3-verify i3-flutter-verify i4-verify a1-validate a2-verify a2-docker-smoke a3-integration a3-verify a6-verify agent-platform basics-verify b1-verify b2-verify b3-verify basics-build-test b6-bench d5-verify clean
+# D1 terraform-aws-stack (S3 + Lambda + API GW HTTP v2; offline plan, no AWS account).
+D1_DIR := DevOps-Infra/terraform-aws-stack
+
+.PHONY: help bootstrap doctor setup-env verify test rust node python i1-verify i3-verify i3-flutter-verify i4-verify a1-validate a2-verify a2-docker-smoke a3-integration a3-verify a6-verify agent-platform basics-verify b1-verify b2-verify b3-verify basics-build-test b6-bench d5-verify d1-verify clean
 
 help:  ## Show available targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) \
@@ -83,7 +86,7 @@ python:  ## Create venv + install + test all Python services
 			&& pip -q install -r requirements.txt && python -m pytest -q ) || exit 1; done
 
 verify: test  ## Alias for the full test suite
-test: rust node python i3-verify i1-verify i4-verify d5-verify  ## Run every test suite (Rust + Node + Python + I3 sandbox + I1 ER diagram + I4 polyglot pair + D5 reproducible env)
+test: rust node python i3-verify i1-verify i4-verify d5-verify d1-verify  ## Run every test suite (Rust + Node + Python + I3 sandbox + I1 ER diagram + I4 polyglot pair + D5 reproducible env + D1 terraform)
 	@echo "== ALL SUITES PASSED =="
 
 # ---- I1 — ER-diagram artifact (validator + tests + spec-sync; offline) ---------
@@ -209,6 +212,10 @@ d5-verify:  ## Verify D5 (toolchain-pin sync guard + one-command bootstrap: ruff
 	@echo "== d5: bootstrap (install -> verify pins -> venv -> deps -> gates -> tests) =="
 	@( cd $(D5_DIR) && $(MAKE) bootstrap ) || exit 1
 	@echo "== ✅ D5 REPRODUCIBLE-ENV PASSED =="
+
+# ---- D1 terraform-aws-stack (offline plan + handler tests; no AWS account) -----
+d1-verify:  ## Verify D1 (terraform fmt/validate/offline-plan + tflint/checkov if present + handler tests)
+	@$(RUN) bash $(D1_DIR)/scripts/verify.sh
 
 # ---- Basics — B1–B6 shared contract + artifact gates + service tests -----------
 basics-verify: b1-verify b2-verify b3-verify basics-build-test b6-bench  ## Verify Basics tier (B1–B6 artifacts + B4/B5 contract + B6)

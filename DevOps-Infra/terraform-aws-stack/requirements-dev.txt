@@ -1,0 +1,5 @@
+# Dev/test dependencies for the Lambda handler unit tests.
+# boto3 mirrors the AWS Lambda Python runtime (provided at runtime, not packaged).
+boto3==1.35.49
+pytest==8.3.3
+pytest-cov==5.0.0

@@ -5,4 +5,16 @@
 *.tfplan
 crash.log
 build/
+
+# Real variable files may carry account-specific values; keep only the example.
+terraform.tfvars
+*.auto.tfvars
+!terraform.tfvars.example
+
+# Python test env / caches.
+.venv/
+.pytest_cache/
+.coverage
+__pycache__/
+
 # Keep the lock file committed (pins provider versions): .terraform.lock.hcl

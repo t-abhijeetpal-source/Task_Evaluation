@@ -148,7 +148,7 @@ flowchart LR
 ### 🟠 DevOps & Infra — *ship and operate it for real*
 | Folder | What it proves | Evidence |
 |---|---|---|
-| `terraform-aws-stack` | Pinned, validated IaC (S3 + Lambda + API GW) | `validate` 0 errors; clean plan (15 to add) |
+| `terraform-aws-stack` | Pinned, hardened IaC (S3 + Lambda + API GW, KMS, least-priv IAM) | `validate` 0 errors; clean offline plan (28 to add); checkov 0 failed; handler tests ≥90% |
 | `docker-compose-stack` | API + PostgreSQL + worker, health-gated startup | build→up→seed→E2E→down, all exit 0 |
 | `ci-pipeline` | 5-stage GitHub Actions + cache + fail→fix demo | fail at stage 2 → fix → all green |
 | `kubernetes-manifests` | Deployment/Service/probes, validated on a local cluster | manifests applied + verified |
