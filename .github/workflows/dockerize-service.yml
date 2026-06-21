@@ -1,0 +1,126 @@
+name: I5 Dockerize Service CI
+
+# Lint -> Test -> Docker build (buildx + GHA cache) -> container smoke test.
+# Path-filtered so it only runs when the dockerize-service (or this workflow) changes.
+on:
+  push:
+    paths:
+      - "Intermediate/dockerize-service/**"
+      - "Intermediate/shared/currency-core/**"
+      - ".github/workflows/dockerize-service.yml"
+  pull_request:
+    paths:
+      - "Intermediate/dockerize-service/**"
+      - "Intermediate/shared/currency-core/**"
+      - ".github/workflows/dockerize-service.yml"
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: i5-dockerize-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: "Intermediate/dockerize-service"
+
+jobs:
+  i5-dockerize-service:
+    name: i5-dockerize-service
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+    env:
+      IMAGE: currency-service:ci-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---- Lint + tests (Python ${{ matrix.python-version }}) ----------------
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            Intermediate/dockerize-service/requirements.txt
+            Intermediate/dockerize-service/requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Run tests (pytest)
+        run: pytest -v --junitxml=test-results.xml
+
+      # Keep failing test output for triage even when the job fails.
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: i5-test-results
+          path: "Intermediate/dockerize-service/test-results.xml"
+          retention-days: 7
+
+      # ---- Docker image build (buildx + GitHub Actions layer cache) ----------
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          # Context is the monorepo Intermediate/ dir so the shared currency-core
+          # package is reachable; .dockerignore keeps the context small.
+          context: "Intermediate"
+          file: "Intermediate/dockerize-service/Dockerfile"
+          push: false          # see README "CI" section for the future GHCR push step
+          load: true           # load into the local daemon so we can smoke-test it
+          tags: ${{ env.IMAGE }}
+          build-args: |
+            BUILD_ID=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ---- Smoke test: run the container and hit /health ---------------------
+      - name: Smoke test container
+        run: |
+          docker run -d --name currency-ci -p 8000:8000 "$IMAGE"
+          echo "Waiting for container to become healthy..."
+          for i in $(seq 1 20); do
+            status=$(docker inspect --format '{{.State.Health.Status}}' currency-ci 2>/dev/null || echo starting)
+            echo "  attempt $i: $status"
+            if [ "$status" = "healthy" ]; then break; fi
+            if [ "$status" = "unhealthy" ]; then docker logs currency-ci; exit 1; fi
+            sleep 2
+          done
+          if [ "$(docker inspect --format '{{.State.Health.Status}}' currency-ci)" != "healthy" ]; then
+            echo "::error::container never became healthy"; docker logs currency-ci; exit 1
+          fi
+          echo "Curling /health (liveness)..."
+          body=$(curl -fsS localhost:8000/health)
+          echo "  response: $body"
+          case "$body" in *'"status":"ok"'*) ;; *) echo "::error::unexpected /health body"; exit 1;; esac
+          echo "Curling /ready (readiness)..."
+          ready=$(curl -fsS localhost:8000/ready)
+          echo "  response: $ready"
+          case "$ready" in *'"status":"ok"'*) ;; *) echo "::error::service not ready"; exit 1;; esac
+          echo "Curling /convert..."
+          conv=$(curl -fsS -X POST localhost:8000/convert -H 'Content-Type: application/json' \
+            -d '{"amount":100,"from":"USD","to":"INR"}')
+          echo "  response: $conv"
+          case "$conv" in *'"converted_amount":8300'*) ;; *) echo "::error::unexpected /convert body"; exit 1;; esac
+
+      - name: Tear down container
+        if: always()
+        run: docker rm -f currency-ci || true
+
+      - name: Summary
+        if: success()
+        run: |
+          {
+            echo "### ✅ i5-dockerize-service passed"
+            echo "- Lint: ruff"
+            echo "- Tests: pytest (Python ${{ matrix.python-version }})"
+            echo "- Image built: \`$IMAGE\`"
+            echo "- Smoke test: /health → {\"status\":\"ok\"}"
+          } >> "$GITHUB_STEP_SUMMARY"
