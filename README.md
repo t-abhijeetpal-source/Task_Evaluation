@@ -127,7 +127,7 @@ flowchart LR
 | Folder | What it proves | Evidence |
 |---|---|---|
 | `er-diagram` | Data model + Mermaid ER from source, reconciled | 27 tables; no-FK cache pattern |
-| `flow-tracer` | UI→VM→UseCase→Repo→DB trace with DI resolution | recent-search flow, file:line cited |
+| `flow-tracer` | UI→VM→UseCase→Repo→API→native-sync trace with full DI resolution | add-to-watchlist flow (33 hops, 0 inferred), pinned commit, `file:line` cited, `verify_trace.sh` 36/36; recent-search as corroborating Flow B |
 | `minimal-safe-change` | Smallest safe change + before/after tests + rollback | in-repo Python sandbox: `pytest` **2 failed → fix → 5 passed** + ruff (`make i3-verify`); pml-flutter `flutter test` 40/40 as extended example |
 | `polyglot-currency-pair` | FastAPI service + Node client on one contract | pytest **7** + jest **9** + live integration |
 | `dockerize-service` | Slim, non-root, health-checked image | container **Up (healthy)**, 55 MB |

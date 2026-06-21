@@ -1,0 +1,303 @@
+# I2 Flow Trace — machine-readable call graph
+# Pinned commit: e7fc70a6b564ca3baffecb9a652194702443df3b (android-monorepo)
+# Every node carries file:line:function:confidence as read at the pinned commit.
+# `assert` strings are what scripts/verify_trace.sh greps at (or near) the cited line.
+
+meta:
+  task: I2
+  repo: android-monorepo
+  repo_local_path: /Users/abhijeetpal/Desktop/workspace/android-monorepo/android-monorepo
+  pinned_commit: e7fc70a6b564ca3baffecb9a652194702443df3b
+  pinned_date: "2026-06-20 07:27:49 +0530"
+  pinned_branch: bugfix/PM4-6240-scheme-holding-tab-inaccessible-initially
+  flutter_root: flutter/pml-flutter/lib
+  generated_by: I2 flow-trace agent (5 evidence sub-agents + 1 blind adversarial verifier)
+
+flows:
+  - id: A
+    name: Add security to watchlist
+    primary: true
+    trigger: User taps watchlist icon on a Company Page, then picks a watchlist
+    terminal_side_effect: POST .../watchlist/{id}/security + native CachedWatchlistLiveData.sync() (Retrofit GET)
+    hop_count: 33
+    inferred_on_happy_path: 0
+  - id: B
+    name: Recent-search persistence
+    primary: false
+    trigger: User taps/bookmarks a stock in equity search
+    terminal_side_effect: PUT event API + Room write to recent_search (cap 10)
+    hop_count: 8
+    full_trace: Advanced/parallel-repo-analysis/docs/agent-analysis/A1_flow_trace.md
+
+# ---- Flow A: ordered hops ----
+nodes:
+  - n: 1
+    flow: A
+    file: flutter/pml-flutter/lib/features/company_page/presentation/ui/PMLCompanyPage.dart
+    line: 1829
+    fn: GestureDetector.onTap
+    confidence: VERIFIED
+    assert: "_openWatchListBottomSheet"
+    desc: Watchlist icon tap opens bottom sheet
+  - n: 2
+    flow: A
+    file: flutter/pml-flutter/lib/features/company_page/presentation/ui/PMLCompanyPage.dart
+    line: 1928
+    fn: _openWatchListBottomSheet
+    confidence: VERIFIED
+    assert: "_openWatchListBottomSheet"
+    desc: showModalBottomSheet builds PMLAddToWatchlistBottomSheet
+  - n: 3
+    flow: A
+    file: flutter/pml-flutter/lib/features/company_page/presentation/ui/bottom_sheets/PMLAddToWatchlistBottomSheet.dart
+    line: 40
+    fn: initState
+    confidence: VERIFIED
+    assert: "loadWatchList"
+    desc: Post-frame triggers GET load
+  - n: 4
+    flow: A
+    file: flutter/pml-flutter/lib/features/company_page/presentation/viewmodel/PMLWatchlistViewModel.dart
+    line: 17
+    fn: loadWatchList
+    confidence: VERIFIED
+    assert: "loadWatchList"
+    desc: Calls useCase.fetchWatchlists
+  - n: 5
+    flow: A
+    file: flutter/pml-flutter/lib/features/company_page/domain/usecases/PMLWatchlistUseCase.dart
+    line: 11
+    fn: fetchWatchlists
+    confidence: VERIFIED
+    assert: "fetchWatchlists"
+    desc: Delegates to repository
+  - n: 6
+    flow: A
+    file: flutter/pml-flutter/lib/features/company_page/data/repositories/PMLWatchlistRepositoryImpl.dart
+    line: 13
+    fn: fetchWatchlists
+    confidence: VERIFIED
+    assert: "fetchWatchlists"
+    desc: Delegates to remoteDataSource
+  - n: 7
+    flow: A
+    file: flutter/pml-flutter/lib/features/company_page/data/datasources/remote/PMLWatchlistRemoteDataSourceImpl.dart
+    line: 21
+    fn: fetchWatchlists
+    confidence: VERIFIED
+    assert: "/marketwatch/api/v2/watchlist?verbose=1"
+    desc: Builds GET BaseApiRequest
+  - n: 8
+    flow: A
+    file: flutter/pml-flutter/lib/core/network/api_manager.dart
+    line: 33
+    fn: ApiManager._useBridge
+    confidence: VERIFIED
+    assert: "_useBridge = false"
+    desc: Bridge OFF by default -> direct HTTP (resolves prior INFERRED hop)
+  - n: 9
+    flow: A
+    file: flutter/pml-flutter/lib/core/network/http_api_client.dart
+    line: 428
+    fn: execute
+    confidence: VERIFIED
+    assert: "ApiException"
+    desc: 2xx parse / non-2xx throws ApiException
+  - n: 11
+    flow: A
+    file: flutter/pml-flutter/lib/features/company_page/presentation/ui/bottom_sheets/PMLAddToWatchlistBottomSheet.dart
+    line: 121
+    fn: _WatchlistRow.onTap
+    confidence: VERIFIED
+    assert: "toggleWatchlistStatus"
+    desc: Pop + toggleWatchlistStatus(item.id, item.name, widget.pmlId, isChecked)
+  - n: 12
+    flow: A
+    file: flutter/pml-flutter/lib/features/company_page/presentation/viewmodel/PMLWatchlistViewModel.dart
+    line: 135
+    fn: toggleWatchlistStatus
+    confidence: VERIFIED
+    assert: "addToWatchlist(watchlistId, securityId, watchListName)"
+    desc: Add branch forwards (param-name double-swap, net-correct)
+  - n: 13
+    flow: A
+    file: flutter/pml-flutter/lib/features/company_page/presentation/viewmodel/PMLWatchlistViewModel.dart
+    line: 73
+    fn: addToWatchlist
+    confidence: VERIFIED
+    assert: "_useCase.addToWatchlist(watchlistId, securityId)"
+    desc: Calls useCase.addToWatchlist
+  - n: 16
+    flow: A
+    file: flutter/pml-flutter/lib/features/company_page/data/datasources/remote/PMLWatchlistRemoteDataSourceImpl.dart
+    line: 60
+    fn: addToWatchlist
+    confidence: VERIFIED
+    assert: "/marketwatch/api/v1/watchlist/$watchlistId/security"
+    desc: POST BaseApiRequest
+  - n: 17
+    flow: A
+    file: flutter/pml-flutter/lib/features/company_page/data/models/AddToWatchlistRequestBody.dart
+    line: 8
+    fn: toJson
+    confidence: VERIFIED
+    assert: "'security_id': securityId"
+    desc: Serializes request body
+  - n: 20
+    flow: A
+    file: flutter/pml-flutter/lib/features/company_page/presentation/viewmodel/PMLWatchlistViewModel.dart
+    line: 74
+    fn: addToWatchlist (success)
+    confidence: VERIFIED
+    assert: "onAddDeleteEvent"
+    desc: Fires add event
+  - n: 21
+    flow: A
+    file: flutter/pml-flutter/lib/features/company_page/presentation/di/PMLWatchlistProviders.dart
+    line: 35
+    fn: watchlistViewModelProvider
+    confidence: VERIFIED
+    assert: "watchlistEventProvider.notifier).state = event"
+    desc: Event -> StateProvider
+  - n: 22
+    flow: A
+    file: flutter/pml-flutter/lib/features/company_page/presentation/ui/PMLCompanyPage.dart
+    line: 806
+    fn: build (ref.listen)
+    confidence: VERIFIED
+    assert: "watchlistEventProvider"
+    desc: Listener fires snackbar/native/refresh/deeplink
+  - n: 23
+    flow: A
+    file: flutter/pml-flutter/lib/features/company_page/domain/usecases/PMLSendDetailsDataUseCase.dart
+    line: 51
+    fn: sendNativeData
+    confidence: VERIFIED
+    assert: "selectedTabType"
+    desc: Bridge getNativeData WatchListAdded (resolves prior INFERRED hop)
+  - n: 24
+    flow: A
+    file: flutter/pml-flutter/lib/features/company_page/presentation/ui/PMLCompanyPage.dart
+    line: 847
+    fn: build (listener, success-gated)
+    confidence: VERIFIED
+    assert: "watchlistViewModelFamilyProvider(pmlID).notifier).loadWatchList()"
+    desc: Family VM icon refresh
+  - n: 25
+    flow: A
+    file: flutter/pml-flutter/lib/features/company_page/presentation/ui/PMLCompanyPage.dart
+    line: 852
+    fn: build (listener)
+    confidence: VERIFIED
+    assert: "sync_watchlist"
+    desc: handleDeeplink sync_watchlist (unconditional for non-null event)
+  - n: 25b
+    flow: A
+    file: flutter/pml-flutter/lib/core/bridge/usecases/pml_flutter_bridge_common_usecases.dart
+    line: 170
+    fn: handleDeeplink
+    confidence: VERIFIED
+    assert: "handleDeeplink"
+    desc: sendEvent(PMLBridgeName.handleDeepLink, priority low)
+  - n: 26
+    flow: A
+    file: equity_sdk/src/main/java/com/paytmmoney/equity/flutter/FlutterNativeCommunicationImpl.kt
+    line: 471
+    fn: when(deeplinkUrl) "sync_watchlist"
+    confidence: VERIFIED
+    assert: "sync_watchlist"
+    desc: runCatching { cachedWatchlistLiveData.sync() }
+  - n: 27
+    flow: A
+    file: equity_sdk/src/main/java/com/paytmmoney/equity/watchlist/presentation/CachedWatchlistLiveData.kt
+    line: 63
+    fn: sync
+    confidence: VERIFIED
+    assert: "fun sync()"
+    desc: getWatchlistUseCase.execute().subscribeOn(io)
+  - n: 29
+    flow: A
+    file: equity_sdk/src/main/java/com/paytmmoney/equity/watchlist/domain/GetWatchlistUseCase.kt
+    line: 29
+    fn: GetWatchlistUseCaseImpl.execute
+    confidence: VERIFIED
+    assert: "getAllWatchlists"
+    desc: Delegates to repository
+  - n: 31
+    flow: A
+    file: equity_sdk/src/main/java/com/paytmmoney/equity/watchlist/data/RepositoryImpl.kt
+    line: 38
+    fn: getAllWatchlists
+    confidence: VERIFIED
+    assert: "getAllWatchlists(url, 1)"
+    desc: Builds GTM URL, calls service
+  - n: 32
+    flow: A
+    file: equity_sdk/src/main/java/com/paytmmoney/equity/watchlist/data/CommonEquityWatchlistService.kt
+    line: 17
+    fn: getAllWatchlists
+    confidence: VERIFIED
+    assert: "@GET"
+    desc: TERMINAL Retrofit GET (@Url, verbose)
+
+di_bindings:
+  riverpod:
+    - { provider: apiManagerProvider, resolves_to: ApiManager, file: flutter/pml-flutter/lib/core/providers/core_providers.dart, line: 50 }
+    - { provider: httpApiClientProvider, resolves_to: HttpApiClient, file: flutter/pml-flutter/lib/core/providers/core_providers.dart, line: 35 }
+    - { provider: watchlistViewModelProvider, resolves_to: PMLWatchlistViewModel, file: flutter/pml-flutter/lib/features/company_page/presentation/di/PMLWatchlistProviders.dart, line: 32 }
+    - { provider: watchlistUseCaseProvider, resolves_to: PMLWatchlistUseCase, file: flutter/pml-flutter/lib/features/company_page/presentation/di/PMLWatchlistProviders.dart, line: 26 }
+    - { provider: watchlistRepositoryProvider, resolves_to: PMLWatchlistRepositoryImpl, file: flutter/pml-flutter/lib/features/company_page/presentation/di/PMLWatchlistProviders.dart, line: 20 }
+    - { provider: watchlistRemoteDataSourceProvider, resolves_to: PMLWatchlistRemoteDataSourceImpl, file: flutter/pml-flutter/lib/features/company_page/presentation/di/PMLWatchlistProviders.dart, line: 14 }
+    - { provider: watchlistEventProvider, resolves_to: StateProvider, file: flutter/pml-flutter/lib/features/company_page/presentation/di/PMLWatchlistProviders.dart, line: 12 }
+    - { provider: watchlistViewModelFamilyProvider, resolves_to: PMLWatchlistViewModel.family, file: flutter/pml-flutter/lib/features/company_page/presentation/di/PMLCompanyPageFamilyProviders.dart, line: 131 }
+    - { provider: watchlistSyncStateProvider, resolves_to: WatchlistSyncNotifier, file: flutter/pml-flutter/lib/features/PMLWatchlist/presentation/provider/watchlist_sync_provider.dart, line: 45 }
+  dagger:
+    - { interface: GetWatchlistUseCase, impl: GetWatchlistUseCaseImpl, file: equity_sdk/src/main/java/com/paytmmoney/equity/watchlist/di/CommonEquityWatchlistModule.kt, line: 25 }
+    - { interface: Repository, impl: RepositoryImpl, file: equity_sdk/src/main/java/com/paytmmoney/equity/watchlist/di/CommonEquityWatchlistModule.kt, line: 31 }
+    - { interface: CommonEquityWatchlistService, impl: retrofit.create, file: equity_sdk/src/main/java/com/paytmmoney/equity/watchlist/di/CommonEquityWatchlistModule.kt, line: 34 }
+    - { interface: CachedWatchlistLiveData, impl: getInstance singleton, file: equity_sdk/src/main/java/com/paytmmoney/equity/watchlist/di/CommonEquityWatchlistModule.kt, line: 19 }
+
+side_effects:
+  api:
+    - { method: GET, url: "{equityBaseUrl}/marketwatch/api/v2/watchlist?verbose=1", file: flutter/pml-flutter/lib/features/company_page/data/datasources/remote/PMLWatchlistRemoteDataSourceImpl.dart, line: 21, hop: 7 }
+    - { method: POST, url: "{equityBaseUrl}/marketwatch/api/v1/watchlist/{id}/security", body: '{"security_id":"<pmlId>"}', file: flutter/pml-flutter/lib/features/company_page/data/datasources/remote/PMLWatchlistRemoteDataSourceImpl.dart, line: 60, hop: 16 }
+    - { method: DELETE, url: "{equityBaseUrl}/marketwatch/api/v1/watchlist/{id}/security/{securityId}", file: flutter/pml-flutter/lib/features/company_page/data/datasources/remote/PMLWatchlistRemoteDataSourceImpl.dart, line: 81, hop: toggle-off }
+    - { method: GET, url: "GTM-resolved default /marketwatch/api/v2/watchlist?verbose=1", file: equity_sdk/src/main/java/com/paytmmoney/equity/watchlist/data/CommonEquityWatchlistService.kt, line: 17, hop: 32 }
+  base_url: { value: "https://api-eq.paytmmoney.com", file: flutter/pml-flutter/lib/core/network/api_environment.dart, line: 42 }
+  database: []   # Flow A: none. Room writes belong to Flow B (recent_search).
+  queue: []
+  cache:
+    - { what: "CachedWatchlistLiveData in-memory LiveData refresh", file: equity_sdk/src/main/java/com/paytmmoney/equity/watchlist/presentation/CachedWatchlistLiveData.kt, line: 63 }
+    - { what: "watchlistSyncStateProvider.markAsNeedingRefresh()", file: flutter/pml-flutter/lib/features/company_page/presentation/ui/PMLCompanyPage.dart, line: 846 }
+  bridge:
+    - { event: "getNativeData (selectedTabType WatchListAdded)", file: flutter/pml-flutter/lib/features/company_page/domain/usecases/PMLSendDetailsDataUseCase.dart, line: 51 }
+    - { event: "handleDeepLink (sync_watchlist)", file: flutter/pml-flutter/lib/features/company_page/presentation/ui/PMLCompanyPage.dart, line: 852 }
+
+error_paths:
+  - { id: E3, code: 401, action: "logout()", file: flutter/pml-flutter/lib/core/network/api_manager.dart, line: 123, assert: "401" }
+  - { id: E4, code: 419, action: "twoFASessionExpired()", file: flutter/pml-flutter/lib/core/network/api_manager.dart, line: 126, assert: "419" }
+  - { id: E6, trigger: "add fails", action: "onAddDeleteEvent(add, success:false) -> red snackbar", file: flutter/pml-flutter/lib/features/company_page/presentation/viewmodel/PMLWatchlistViewModel.dart, line: 90, assert: "success: false" }
+  - { id: E7, trigger: "native sync fails", action: "runCatching swallows", file: equity_sdk/src/main/java/com/paytmmoney/equity/flutter/FlutterNativeCommunicationImpl.kt, line: 472, assert: "runCatching" }
+
+auth_headers:
+  base_constants_file: flutter/pml-flutter/lib/core/network/header_config.dart
+  keys:
+    - { header: x-sso-token, const: kSsoToken, line: 60, source: "native login bridge (app_service.dart:247)" }
+    - { header: x-2fa-token, const: kTwoFaToken, line: 59, source: "native 2FA bridge (app_service.dart:68)" }
+    - { header: x-user-agent, const: kUserAgent, line: 58, source: "app_service.dart:251" }
+    - { header: x-pmngx-key, const: kPmngxKey, line: 55, source: "app_service.dart:348 (default 330)" }
+    - { header: X-Client-Version, const: kClientVersion, line: 53, source: "app_service.dart:362" }
+    - { header: X-Platform, const: kPlatform, line: 54, source: "app_service.dart:368" }
+  merge_point: { file: flutter/pml-flutter/lib/core/network/http_api_client.dart, line: 359, detail: "httpRequest.headers.addAll({..._globalHeaders})" }
+
+# ---- Flow B: recent-search (re-verified at e7fc70a; full detail in A1) ----
+flow_b_nodes:
+  - { n: 1, file: equity_sdk/src/main/java/com/paytmmoney/equity/search/presentation/EquitySearchFragment.kt, line: 456, fn: putSearchedEvent, confidence: VERIFIED }
+  - { n: 2, file: equity_sdk/src/main/java/com/paytmmoney/equity/search/presentation/EquitySearchViewModel.kt, line: 750, fn: putSearchedEvent, confidence: VERIFIED }
+  - { n: 3, file: equity_sdk/src/main/java/com/paytmmoney/equity/scripEvent/domain/SearchedUserEventImpl.kt, line: 16, fn: execute, confidence: VERIFIED }
+  - { n: 4, file: equity_sdk/src/main/java/com/paytmmoney/equity/scripEvent/data/ScripEventRepositoryImp.kt, line: 64, fn: putSearchUserEvent, confidence: VERIFIED, note: "mergeArrayDelayError fan-out: PUT(65) + Room(66-84)" }
+  - { n: 5, file: equity_sdk/src/main/java/com/paytmmoney/equity/scripEvent/data/ScripEventServices.kt, line: 8, fn: putUserEvent, confidence: VERIFIED }
+  - { n: 6, file: common-database/src/main/java/com/paytmmoney/equity_database/search/RecentSearchDao.kt, line: 30, fn: insertAndCheckMax, confidence: VERIFIED, note: "MAX=10 line14; table recent_search" }
+flow_b_side_effects:
+  api: [{ method: PUT, via: "@Url GTM-resolved", file: equity_sdk/src/main/java/com/paytmmoney/equity/scripEvent/data/ScripEventServices.kt, line: 8 }]
+  database: [{ op: "INSERT OR REPLACE + cap-evict", table: recent_search, file: common-database/src/main/java/com/paytmmoney/equity_database/search/RecentSearchDao.kt, line: 30 }]
