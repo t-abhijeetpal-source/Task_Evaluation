@@ -1,3 +1,8 @@
+# Dev/test toolchain. Versions aligned with the sibling DevOps-Infra/ci-pipeline
+# (D3) service so the DevOps estate shares one pytest/ruff/mypy baseline.
 -r requirements.txt
-pytest==8.3.4
+pytest==9.1.0
+pytest-cov==7.1.0
 httpx==0.28.1
+ruff==0.15.17
+mypy==2.1.0

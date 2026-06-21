@@ -152,7 +152,7 @@ flowchart LR
 | `docker-compose-stack` | API + PostgreSQL + worker, health-gated startup | build→up→seed→E2E→down, all exit 0 |
 | `ci-pipeline` | 5-stage GitHub Actions + cache + fail→fix demo | fail at stage 2 → fix → all green |
 | `kubernetes-manifests` | Deployment/Service/probes, validated on a local cluster | manifests applied + verified |
-| `reproducible-dev-env` | One-command `make bootstrap` (mise-pinned runtimes) | clean-slate **85/85 tests green** |
+| `reproducible-dev-env` | Two distinct pinned-toolchain entrypoints — the folder's own `make` (demo) **and** root `make bootstrap` (whole monorepo) — kept in sync | D5 demo **27/27** (100% cov, CI clean-Linux); root bootstrap **85/85** (see [`docs/BOOTSTRAP.md`](docs/BOOTSTRAP.md)) |
 | `observability-bolt-on` | Structured logs + Prometheus metrics + health/readiness | scrape + probes verified (Prometheus/Grafana) |
 
 ---

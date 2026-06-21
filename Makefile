@@ -42,7 +42,10 @@ A3_DIR := Advanced/polyglot-fraud-system
 # Basics tier — shared contract + analysis artifact gates.
 BASICS_DIR := Basics
 
-.PHONY: help bootstrap doctor setup-env verify test rust node python i1-verify i3-verify i3-flutter-verify i4-verify a1-validate a2-verify a2-docker-smoke a3-integration a3-verify a6-verify agent-platform basics-verify b1-verify b2-verify b3-verify basics-build-test b6-bench clean
+# D5 reproducible dev environment (self-contained FastAPI demo; its own pinned mise.toml).
+D5_DIR := DevOps-Infra/reproducible-dev-env
+
+.PHONY: help bootstrap doctor setup-env verify test rust node python i1-verify i3-verify i3-flutter-verify i4-verify a1-validate a2-verify a2-docker-smoke a3-integration a3-verify a6-verify agent-platform basics-verify b1-verify b2-verify b3-verify basics-build-test b6-bench d5-verify clean
 
 help:  ## Show available targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) \
@@ -80,7 +83,7 @@ python:  ## Create venv + install + test all Python services
 			&& pip -q install -r requirements.txt && python -m pytest -q ) || exit 1; done
 
 verify: test  ## Alias for the full test suite
-test: rust node python i3-verify i1-verify i4-verify  ## Run every test suite (Rust + Node + Python + I3 sandbox + I1 ER diagram + I4 polyglot pair)
+test: rust node python i3-verify i1-verify i4-verify d5-verify  ## Run every test suite (Rust + Node + Python + I3 sandbox + I1 ER diagram + I4 polyglot pair + D5 reproducible env)
 	@echo "== ALL SUITES PASSED =="
 
 # ---- I1 — ER-diagram artifact (validator + tests + spec-sync; offline) ---------
@@ -198,6 +201,14 @@ agent-platform:  ## Verify the Next.js agent-platform (regenerate metrics -> tes
 		&& echo "-- eslint --" && npm run lint \
 		&& echo "-- next build --" && npm run build ) || exit 1
 	@echo "== ✅ AGENT-PLATFORM PASSED =="
+
+# ---- D5 reproducible dev environment (self-contained; own pinned mise.toml) ----
+d5-verify:  ## Verify D5 (toolchain-pin sync guard + one-command bootstrap: ruff + mypy + pytest --cov)
+	@echo "== d5: toolchain sync guard =="
+	@( cd $(D5_DIR) && ./scripts/check-toolchain-sync.sh ) || exit 1
+	@echo "== d5: bootstrap (install -> verify pins -> venv -> deps -> gates -> tests) =="
+	@( cd $(D5_DIR) && $(MAKE) bootstrap ) || exit 1
+	@echo "== ✅ D5 REPRODUCIBLE-ENV PASSED =="
 
 # ---- Basics — B1–B6 shared contract + artifact gates + service tests -----------
 basics-verify: b1-verify b2-verify b3-verify basics-build-test b6-bench  ## Verify Basics tier (B1–B6 artifacts + B4/B5 contract + B6)

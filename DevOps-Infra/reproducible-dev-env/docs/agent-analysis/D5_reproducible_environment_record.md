@@ -1,141 +1,167 @@
 # D5 Reproducible Development Environment Record
 
+> **Scope.** This record describes **only what exists in
+> `DevOps-Infra/reproducible-dev-env/`** — its local `mise.toml`, local `Makefile`,
+> `scripts/bootstrap.sh`, the demo FastAPI service, its 27 tests, and its dev
+> container. The **repo-root** monorepo bootstrap (`make bootstrap` → 85 tests
+> across Python/Node/Rust) is a *separate* entrypoint documented in
+> [root `docs/BOOTSTRAP.md`](../../../../docs/BOOTSTRAP.md). The two are deliberately
+> not conflated; `scripts/check-toolchain-sync.sh` keeps their Python/Node pins aligned.
+
+## 0. Two entrypoints (authoritative)
+
+| | **This folder** (`make`) | **Repo root** (`make bootstrap`) |
+|---|---|---|
+| Command | `cd DevOps-Infra/reproducible-dev-env && make` | `make bootstrap` (repo root) |
+| Installs | python 3.12.8 + node 22.12.0 | python 3.12.8 + node 22.12.0 + rust 1.83.0 |
+| Runs | this demo's gates + `pytest` | every component's `pytest`/`jest`/`cargo test` |
+| Tests | **27** (this service) | **85** (10 components) |
+| Doc | this file + folder README | root `docs/BOOTSTRAP.md` |
+
 ## 1. Environment Strategy & Toolchain Blueprint
-* **Chosen Reproducibility Strategy:** **mise (version-locker) + Makefile (`make bootstrap` entrypoint).**
-* **Architectural Justification:** the repo is a **polyglot monorepo** (Python + Node + Rust + Docker
-  + Terraform). A single language-specific tool (e.g. a Python venv or a Node-only devcontainer)
-  can't pin all three runtimes. **mise** pins Python/Node/Rust to exact versions in one declarative
-  file (`mise.toml`), installs them precompiled (fast, no per-language version managers), and works
-  on the bare host (no Docker prerequisite for the toolchain). A thin **Makefile** then chains the
-  full lifecycle into one atomic command. This is the cleanest path: one locker for all runtimes,
-  one entrypoint, runnable from a fresh clone with only `mise` + `make` present. (Dev Containers /
-  Nix were rejected: Dev Containers force a Docker dependency for everyday dev; Nix's learning curve
-  and flake overhead are disproportionate for three mainstream runtimes.)
-* **Version Pinning Matrix:**
-  | Runtime/Tool | Exact Target Version | Lock Mechanism Used | Source Reference |
-  |--------------|----------------------|---------------------|------------------|
-  | Python | 3.12.7 | `mise.toml` `[tools]` + `.tool-versions` | Dockerfiles `FROM python:3.12-slim` |
-  | Node.js | 22.11.0 (LTS) | `mise.toml` + `.tool-versions` | `package.json` (jest 29); LTS (no `engines` pin) |
-  | Rust | 1.83.0 | `mise.toml` + `.tool-versions` | `Cargo.toml` `edition = "2021"` |
-  | Python deps | pinned `==` | per-project `requirements*.txt` | e.g. `DevOps-Infra/ci-pipeline/requirements.txt` |
-  | Node deps | locked | `package-lock.json` (+ `npm ci`-style install) | `Basics/node-transaction-service/package-lock.json` |
-  | Rust deps | locked | `Cargo.lock` | `Basics/rust-logcount-cli/Cargo.lock` |
+* **Chosen strategy:** **mise (version-locker) + a thin Makefile** whose default
+  goal is the full bootstrap, so a fresh clone of this folder is one command: `make`.
+* **Why mise here:** even though this demo is Python-only at runtime, the parent
+  repo is polyglot and pins a single Node alongside Python. mise pins both in one
+  declarative `mise.toml`, installs them precompiled, and needs no Docker for the
+  toolchain. The Makefile chains install → verify-pins → venv → deps → gates → tests.
+  (Dev Containers / Nix were rejected for everyday host dev: Docker dependency and
+  flake overhead respectively. A dev container is still provided as an *alternative*
+  that uses the same mise path — see §2.)
+* **Version Pinning Matrix (this folder):**
+  | Runtime/Tool | Exact version | Lock mechanism | Source / rationale |
+  |--------------|---------------|----------------|--------------------|
+  | Python | 3.12.8 | `mise.toml` `[tools]`, `.tool-versions`, `.python-version` | tests assert 3.12.x; host runs 3.14 |
+  | Node.js | 22.12.0 | `mise.toml` `[tools]`, `.tool-versions` | monorepo parity; **verified live** (see §3) |
+  | Python deps | pinned `==` | `requirements.txt` / `requirements-dev.txt` | aligned with sibling `ci-pipeline` (D3) |
 
-## 2. Infrastructure as Code Developer Configurations
+  Rust is intentionally **not** present here (no Rust code in this folder); it is a
+  root-only pin. `check-toolchain-sync.sh` compares Python + Node across root and D5.
 
-### Toolchain Definition Artifact
+## 2. Infrastructure-as-Code Developer Configurations
+
+### Toolchain definition (`mise.toml`)
 ```toml
-# mise.toml
-[settings]
-python.github_attestations = false   # corporate proxy blocks GitHub attestation API; checksum still verified
-
 [tools]
-python = "3.12.7"
-node   = "22.11.0"
-rust   = "1.83.0"
+python = "3.12.8"
+node   = "22.12.0"
+
+[settings]
+python.github_attestations = false   # clean machines often lack gpg; checksums still verified
 
 [env]
+APP_ENV = "dev"
 PYTHONDONTWRITEBYTECODE = "1"
-
-[tasks.bootstrap]
-run = "make bootstrap"
-[tasks.verify]
-run = "make test"
 ```
+
+### Single-command entrypoint (`Makefile`, default goal = `bootstrap`)
 ```makefile
-# Makefile (bootstrap-relevant targets)
-MISE := $(shell command -v mise 2>/dev/null)
-RUN  := $(if $(strip $(MISE)),mise exec --,)     # run under the pinned toolchain
-
-bootstrap: doctor setup-env test    ## Fresh-clone onboarding: runtimes -> deps -> env -> verify
-doctor:      # mise install + report active python/node/cargo versions
-setup-env:   # cp .env.example .env (no overwrite)
-rust:  @for d in $(RUST_PROJECTS); do (cd "$$d" && $(RUN) cargo test); done
-node:  @for d in $(NODE_PROJECTS); do (cd "$$d" && $(RUN) npm install && $(RUN) npm test); done
-python:@for d in $(PY_PROJECTS); do (cd "$$d" && $(RUN) python -m venv .venv && . .venv/bin/activate \
-          && pip install -r requirements.txt && python -m pytest -q); done
-test: rust node python
+bootstrap:    ./scripts/bootstrap.sh           # install -> verify pins -> venv -> deps -> gates -> tests
+verify:       ruff + mypy + pytest (existing venv, no install)   # fast inner loop
+test:         pytest (coverage gate)
+check-sync:   ./scripts/check-toolchain-sync.sh
+verify-fresh: ./scripts/verify-fresh-clone.sh
 ```
-(`.tool-versions` mirrors the pins for asdf compatibility; `.env.example` documents all env vars.)
 
-### Single-Command Entrypoint
-```bash
-make bootstrap
-# Fresh Clone -> mise install (pinned runtimes) -> install deps (lockfiles) -> generate .env -> build + test
-```
+### Idempotent / incremental bootstrap (`scripts/bootstrap.sh`)
+* Step 2 reads the pinned Node from `mise.toml` and **fails** if the resolved
+  `node --version` is not `v22.12.x` (Node was previously pinned but never checked).
+* Step 3 creates `.venv` **only if missing**.
+* Step 4 hashes `requirements*.txt` into `.venv/.reqs-sha256` and **skips pip**
+  when unchanged. Cold ≈ 18s; warm ≈ 2s.
+
+### Dev container (`.devcontainer/devcontainer.json`)
+Installs `mise` and runs the same `make` bootstrap (not divergent feature runtimes),
+so the container and host read one `mise.toml`. `postStartCommand` runs `make verify`.
+
+### Static analysis & tests
+* `ruff.toml` — `E,F,I,UP,B,S,SIM,RUF`. `mypy.ini` — `strict = true` on `app/`.
+* `pytest.ini` — `--cov=app --cov-fail-under=80`; `filterwarnings = error` (zero
+  warnings) with one scoped ignore for an upstream-only Starlette/httpx deprecation
+  (we deliberately do **not** adopt the unvetted `httpx2` package — see RUNBOOK).
 
 ## 3. Verification & Simulation Pipeline (clean-slate)
 
-### Runtime Installation (mise)
+### Runtime install + pin verification
 ```text
-$ mise install
-mise node@22.11.0   ✓ installed
-mise rust@1.83.0    ✓ installed
-mise python@3.12.7  ✓ installed
-$ mise ls --current
-node    22.11.0   mise.toml  22.11.0
-python  3.12.7    mise.toml  3.12.7
-rust    1.83.0    mise.toml  1.83.0
+==> [1/6] Trust + install pinned toolchain from mise.toml
+    using Python: ~/.local/share/mise/installs/python/3.12.8/bin/python
+    using Node:   ~/.local/share/mise/installs/node/22.12.0/bin/node
+==> [2/6] Verify runtimes match the pins
+    python: Python 3.12.8   node: v22.12.0  (pinned v22.12.x)
 ```
 
-### Clean-slate bootstrap (`make clean` then `make bootstrap`)
+### Clean-slate bootstrap (`make clean && make`) — real output
 ```text
-$ make clean
-cleaned                                  # removed ALL .venv / node_modules / target
-
-$ make bootstrap
-== toolchain ==
-python: Python 3.12.7  |  node: v22.11.0  |  cargo: cargo 1.83.0
-== generated .env from .env.example ==
-== rust: Basics/rust-logcount-cli ==              test result: ok. 7 passed; 0 failed
-== rust: Advanced/polyglot-fraud-system/rust-engine == test result: ok. 6 passed; 0 failed
-== node: Basics/node-transaction-service ==              Tests: 7 passed, 7 total
-== node: Intermediate/polyglot-currency-pair/node-client == Tests: 9 passed, 9 total
-== node: Advanced/polyglot-fraud-system/node-worker ==     Tests: 12 passed, 12 total
-== python: Basics/fastapi-transaction-service ==                       6 passed
-== python: Intermediate/bug-diagnosis ==            5 passed
-== python: Advanced/parallel-expense-tracker ==               16 passed
-== python: Advanced/polyglot-fraud-system/fastapi-service == 10 passed
-== python: Intermediate/polyglot-currency-pair/fastapi-service == 7 passed
-== ALL SUITES PASSED ==
-✅ BOOTSTRAP COMPLETE — repository is runnable.
+==> [3/6] Create virtualenv (.venv) with the pinned Python (only if missing)
+    created .venv
+==> [4/6] Install dependencies (skip if requirements unchanged)
+    dependencies installed
+==> [5/6] Quality gates (ruff + mypy)
+All checks passed!  /  Success: no issues found in 8 source files
+==> [6/6] Run tests (with coverage gate)
+...........................                                              [100%]
+TOTAL                          149      0   100%
+Required test coverage of 80% reached. Total coverage: 100.00%
+27 passed in 0.41s
 ```
 
-### Deterministic Test Engine Run
-* **Test Automation Command:** `make bootstrap` (or `make test` / `make verify`)
-* **Test Suite Output Logs (100% green — 85 tests across 3 languages, 10 components):**
+### Deterministic test engine run
+* **Command:** `make` (or `make verify` / `make test`).
+* **Result:** **27 passed, 100% statement coverage, 0 warnings** under Python 3.12.8.
+  Suites: `test_calc.py` (pure-function edges), `test_app.py` (health, security
+  headers, `POST /v1/add`, deprecated `GET /add`, 422 validation, `/metrics`),
+  `test_middleware.py` (server-error path, CORS), `test_toolchain.py` (Python +
+  **Node** pin proof). Full log: `D5_bootstrap_output.txt`.
+
+### Idempotency (real timings, this host)
 ```text
-Rust:   B6 7 + A3-engine 6                          = 13 passed
-Node:   B5 7 + I4-client 9 + A3-worker 12           = 28 passed
-Python: B4 6 + I6 5 + A2 16 + A3-fastapi 10 + I4 7  = 44 passed
-TOTAL:  85 passed, 0 failed   →  ✅ ALL SUITES PASSED
+cold (make clean && make):  17.99s
+warm (make again):           2.08s   # .venv reused, pip skipped
+verify (no install):         1.71s
+```
+
+### Fresh-clone simulation (`scripts/verify-fresh-clone.sh`)
+`rsync` of **git-tracked files only** (no `.venv`, no caches) into a temp dir, then
+`make` there. Asserts exit 0 + a pytest `N passed` summary:
+```text
+✅ fresh-clone bootstrap succeeded — 27 passed
 ```
 
 ## 4. Discovered & Extracted Assumptions
-* **Previously Implicit System Requirements (now automated):**
-  - No repo-level runtime pinning (only `python:3.12-slim` inside Dockerfiles) → now pinned in `mise.toml` + `.tool-versions` and installed by `mise install`.
-  - No single onboarding command (each component had its own test invocation) → now `make bootstrap`.
-  - Env vars (`DATABASE_URL`, `QUEUE_DIR`, `API_URL`, `A3_INTERNAL_TOKEN`, `ENGINE_BIN`, `WORKER_ID`, `POLL_INTERVAL`, `PORT`) were set ad-hoc → now declared in `.env.example`, auto-copied to `.env`.
-  - Node version was unstated (no `engines`) → pinned to 22 LTS explicitly.
-* **Known Workspace Limitations / Edge Cases:**
-  - **Prerequisites:** `mise` + `make` on the host. (`mise install` needs network to fetch runtimes; behind a corporate TLS proxy set `python.github_attestations = false` — already in `mise.toml`.)
-  - **Docker** is required only for the container/compose tasks (D2/D3/A2/A3 image builds, `make a3-integration`), not for the runtime/test toolchain.
-  - Platform validated: macOS arm64. mise serves the same pins for linux/x86_64 (CI/Codespaces).
-  - The only test-log "warnings" are upstream library **deprecation notices** (FastAPI `on_event`, Starlette TestClient/httpx) inside pytest output — not setup/build warnings; the bootstrap chain itself is warning-free.
+* **Node was pinned but never verified** → bootstrap now fails if the resolved Node
+  is not `v22.12.x`, and `test_node_toolchain_pinned` asserts it via `mise which node`.
+* **Bootstrap recreated `.venv` and reinstalled every run** → now incremental
+  (venv-if-missing + requirements content hash).
+* **Dev container used feature-installed Python/Node** (a path that could drift from
+  `mise.toml`) → now installs mise and runs the same `make`.
+* **No CI proved a clean-machine bootstrap** → `.github/workflows/d5-reproducible-env.yml`
+  installs mise on `ubuntu-latest`, runs `make`, and runs the fresh-clone simulation;
+  a sync-guard job fails if root/D5 pins diverge.
+* **Record previously described the monorepo bootstrap** (85 tests, Rust, root
+  Makefile) while the folder ships a 27-test demo → this record is now folder-scoped
+  and cross-links the root bootstrap doc.
 
-## 5. README Integration & Runbook Requirements
-```markdown
-### Getting Started
-1. **Prerequisites:** `mise` (https://mise.jdx.dev) and `make`. (Docker only for the container/compose tasks.)
-2. **Setup Environment:** `make bootstrap`   # installs pinned runtimes, all deps, generates .env, builds + tests
-3. **Run Test Verification:** `make test`     # (or `make verify`) — full suite across Python/Node/Rust
-4. **Environment Variables:** `make setup-env` copies `.env.example` -> `.env`; edit `.env` to override
-   locally (e.g. `DATABASE_URL`, `A3_INTERNAL_TOKEN`). Apps read these from the process environment.
-```
+### Known limitations / edge cases
+* Prerequisites: `mise` + `make`. `mise install` needs network on a cold machine;
+  behind a TLS proxy keep `python.github_attestations = false` (already set).
+* The one suppressed warning is an **upstream** Starlette/httpx deprecation, not app
+  code; every app-origin warning still fails the suite (`filterwarnings = error`).
+* Platforms validated: macOS arm64 (locally) + `ubuntu-latest` (CI). macOS CI is
+  available opt-in via `workflow_dispatch`.
+
+## 5. Getting Started (folder runbook)
+1. **Prerequisite:** install `mise` (`brew install mise` or `curl https://mise.run | sh`).
+2. **Bootstrap:** `cd DevOps-Infra/reproducible-dev-env && make`.
+3. **Inner loop:** `make verify` (no reinstall). **Tests only:** `make test`.
+4. **Prove a clean machine:** `make verify-fresh`. **Pin drift guard:** `make check-sync`.
+5. **Run the service:** `make run` (`:8000`). See `docs/RUNBOOK.md` for operations.
 
 ## Completion Checklist Gating
-* [x] Precise bootstrap + version-pinning configs at workspace root (`mise.toml`, `.tool-versions`, `.env.example`, `Makefile`).
-* [x] Env variables/stubs auto-populated by the script (`make setup-env` → `.env`).
-* [x] Toolchain isolation driven by a single command (`make bootstrap`, runtimes via `mise exec`).
-* [x] Project builds + passes its complete test suite under the automated runtime (**85/85 green**, clean-slate).
-* [x] This record populated with raw terminal logs (no placeholders).
+* [x] Folder-scoped bootstrap + pinning configs (`mise.toml`, `.tool-versions`, `.python-version`, `Makefile`, `bootstrap.sh`).
+* [x] Python **and Node** pins verified live (bootstrap step 2 + `test_toolchain.py`).
+* [x] One-command onboarding preserved (`make`), now idempotent/incremental.
+* [x] Gates added: ruff + mypy(strict) + pytest coverage (100%), zero warnings.
+* [x] Clean-slate + fresh-clone bootstrap verified with **real** logs (27 passed).
+* [x] CI proves the bootstrap on a clean Linux runner; sync-guard prevents pin drift.
+* [x] Record scoped to this folder; monorepo bootstrap cross-linked, not conflated.

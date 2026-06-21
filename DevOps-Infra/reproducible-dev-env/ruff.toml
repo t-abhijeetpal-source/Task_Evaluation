@@ -1,0 +1,12 @@
+line-length = 100
+target-version = "py312"
+
+[lint]
+# E/F pycodestyle+pyflakes, I import-sort, UP pyupgrade, B bugbear,
+# S flake8-bandit (security), SIM simplify, RUF ruff-native.
+select = ["E", "F", "I", "UP", "B", "S", "SIM", "RUF"]
+
+[lint.per-file-ignores]
+# Tests legitimately use `assert` (S101) and invoke subprocesses by name to probe
+# the pinned toolchain (S603/S607) — that is the unit under test, not a risk.
+"tests/**" = ["S101", "S603", "S607"]

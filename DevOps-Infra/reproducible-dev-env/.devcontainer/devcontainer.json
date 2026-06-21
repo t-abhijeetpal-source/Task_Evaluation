@@ -1,15 +1,23 @@
 {
+  // D5 dev container — the SAME reproducibility path as a laptop, not a divergent one.
+  // Instead of feature-installed Python/Node (which could drift from mise.toml), the
+  // container installs `mise` and runs the identical one-command bootstrap (`make`),
+  // so the container and the host read ONE source of truth: this folder's mise.toml
+  // (python 3.12.8 + node 22.12.0). Parity is structural, not coincidental.
   "name": "D5 Reproducible Dev Environment",
   "image": "mcr.microsoft.com/devcontainers/base:debian-12",
-  "features": {
-    "ghcr.io/devcontainers/features/python:1": { "version": "3.12.8" },
-    "ghcr.io/devcontainers/features/node:1": { "version": "22.12.0" }
-  },
   "containerEnv": {
+    // Mirrors mise.toml [env]; PATH exposes the mise shim installed below.
     "APP_ENV": "dev",
-    "PYTHONDONTWRITEBYTECODE": "1"
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PATH": "/home/vscode/.local/bin:${containerEnv:PATH}"
   },
-  "postCreateCommand": "python -m venv .venv && ./.venv/bin/python -m pip install -q -r requirements-dev.txt",
-  "postStartCommand": "./.venv/bin/python -m pytest -q",
+  // Install mise once (official installer — same as the README/bootstrap instructions).
+  "onCreateCommand": "curl -fsSL https://mise.run | sh",
+  // One-command bootstrap: mise install (pinned runtimes) -> venv -> deps -> gates -> tests.
+  "postCreateCommand": "make",
+  // Every start: fast re-verify in the existing venv (lint + types + tests, no reinstall),
+  // exercising the same suite under the same pinned Python 3.12.8.
+  "postStartCommand": "make verify",
   "forwardPorts": [8000]
 }

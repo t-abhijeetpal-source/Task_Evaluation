@@ -1,0 +1,84 @@
+name: D5 Reproducible Env
+
+# Proves the D5 promise on a clean Linux runner: a fresh clone builds and passes
+# its tests with one command (`make`) under the mise-pinned toolchain. Also gates
+# that the D5 and repo-root toolchain pins never drift.
+on:
+  push:
+    paths:
+      - "DevOps-Infra/reproducible-dev-env/**"
+      - ".github/workflows/d5-reproducible-env.yml"
+      - "mise.toml"
+      - ".tool-versions"
+  pull_request:
+    paths:
+      - "DevOps-Infra/reproducible-dev-env/**"
+      - ".github/workflows/d5-reproducible-env.yml"
+      - "mise.toml"
+      - ".tool-versions"
+  workflow_dispatch:
+    inputs:
+      run_macos:
+        description: "Also run the macOS bootstrap job"
+        type: boolean
+        default: false
+
+# Least privilege: this workflow only reads the repo.
+permissions:
+  contents: read
+
+concurrency:
+  group: d5-reproducible-env-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: "DevOps-Infra/reproducible-dev-env"
+
+jobs:
+  # ---- Gate 1: the D5 and root toolchain pins must agree -----------------------
+  toolchain-sync:
+    name: Toolchain sync guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - run: bash scripts/check-toolchain-sync.sh
+      - run: echo "### ✅ Toolchain pins in sync (root ⇄ D5)" >> "$GITHUB_STEP_SUMMARY"
+
+  # ---- Gate 2: one-command fresh-clone bootstrap on a clean Linux runner --------
+  bootstrap-linux:
+    name: Fresh-clone bootstrap (ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Install mise (official installer; no third-party action)
+        working-directory: ${{ github.workspace }}
+        run: |
+          curl -fsSL https://mise.run | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: One-command bootstrap (mise install -> venv -> deps -> gates -> tests)
+        run: make
+      - name: Fresh-clone simulation (rsync tracked files -> temp, run make there)
+        run: bash scripts/verify-fresh-clone.sh
+      - run: echo "### ✅ D5 fresh-clone bootstrap passed on ubuntu-latest" >> "$GITHUB_STEP_SUMMARY"
+
+  # ---- Optional: same proof on macOS (opt-in via workflow_dispatch) ------------
+  bootstrap-macos:
+    name: Fresh-clone bootstrap (macos)
+    if: github.event_name == 'workflow_dispatch' && inputs.run_macos
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Install mise (official installer)
+        working-directory: ${{ github.workspace }}
+        run: |
+          curl -fsSL https://mise.run | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: One-command bootstrap
+        run: make
+      - name: Fresh-clone simulation
+        run: bash scripts/verify-fresh-clone.sh
+      - run: echo "### ✅ D5 fresh-clone bootstrap passed on macos-latest" >> "$GITHUB_STEP_SUMMARY"

@@ -8,9 +8,11 @@
 # of the python standalone build still applies.
 python.github_attestations = false
 
+# python + node are kept in sync with DevOps-Infra/reproducible-dev-env (D5) —
+# enforced by that folder's scripts/check-toolchain-sync.sh (runs in D5 CI).
 [tools]
-python = "3.12.7"
-node   = "22.11.0"
+python = "3.12.8"
+node   = "22.12.0"
 rust   = "1.83.0"
 
 [env]

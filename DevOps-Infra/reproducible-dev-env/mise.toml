@@ -1,6 +1,10 @@
 # D5 — pinned toolchain for a reproducible dev environment.
 # `mise install` reads this file and installs these exact versions, so every
 # clone (and CI, and a teammate's laptop) runs the same runtimes.
+#
+# These pins MUST match the repo-root mise.toml / .tool-versions (python + node).
+# `scripts/check-toolchain-sync.sh` enforces this and runs in CI; bump both
+# places together. (Rust is root-only — D5 has no Rust code.)
 [tools]
 python = "3.12.8"
 node = "22.12.0"
