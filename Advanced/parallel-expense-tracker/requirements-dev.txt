@@ -1,0 +1,5 @@
+# Development + test dependencies. Installs the production set plus the test
+# toolchain. Used by `make a2-verify` and CI; NOT copied into the Docker image.
+-r requirements.txt
+pytest>=8.0,<9.0
+httpx>=0.27,<1.0

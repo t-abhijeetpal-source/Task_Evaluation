@@ -7,6 +7,9 @@ const API = {
   summary: "/api/summary",
 };
 
+// Abort a stalled request instead of hanging the UI forever.
+const FETCH_TIMEOUT_MS = 8000;
+
 // --- DOM refs ---
 const form = document.getElementById("expense-form");
 const amountInput = document.getElementById("amount");
@@ -26,9 +29,33 @@ function setStatus(message, kind) {
   statusEl.className = kind || "";
 }
 
+// A money value is only valid if it is a real, finite number. null / undefined
+// / NaN / Infinity are NOT money — render them as "unavailable", never as 0.00,
+// so an overflow or backend error can't masquerade as a real $0.00 total.
+function isValidMoney(n) {
+  return typeof n === "number" && Number.isFinite(n);
+}
+
 function fmtMoney(n) {
-  const num = Number(n);
-  return Number.isFinite(num) ? num.toFixed(2) : String(n);
+  return isValidMoney(n) ? n.toFixed(2) : "—";
+}
+
+// fetch() with a timeout via AbortController. Throws on non-2xx or timeout.
+async function fetchJSON(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) throw new Error("Request failed (HTTP " + res.status + ")");
+    return await res.json();
+  } catch (err) {
+    if (err && err.name === "AbortError") {
+      throw new Error("Request timed out. The server may be unavailable.");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function fmtDate(iso) {
@@ -68,13 +95,26 @@ function renderExpenses(list) {
   }
 }
 
+// Returns true if the summary rendered as real data, false if it is unusable
+// (missing / non-finite total) so the caller can show an error instead of a
+// misleading $0.00.
 function renderSummary(summary) {
-  const total = summary && summary.total != null ? summary.total : 0;
-  const count = summary && summary.count != null ? summary.count : 0;
+  const total = summary ? summary.total : null;
+  const count = summary ? summary.count : null;
+  const usable = isValidMoney(total) && Number.isFinite(Number(count));
+
   totalEl.textContent = fmtMoney(total);
-  countEl.textContent = String(count);
+  countEl.textContent = usable ? String(count) : "—";
 
   categoriesEl.innerHTML = "";
+  if (!usable) {
+    const span = document.createElement("span");
+    span.className = "cat-pill";
+    span.textContent = "Summary unavailable";
+    categoriesEl.appendChild(span);
+    return false;
+  }
+
   const byCat = (summary && summary.by_category) || {};
   const cats = Object.keys(byCat);
   if (cats.length === 0) {
@@ -82,7 +122,7 @@ function renderSummary(summary) {
     span.className = "cat-pill";
     span.textContent = "No categories yet";
     categoriesEl.appendChild(span);
-    return;
+    return true;
   }
   for (const cat of cats) {
     const pill = document.createElement("span");
@@ -93,28 +133,30 @@ function renderSummary(summary) {
     pill.appendChild(strong);
     categoriesEl.appendChild(pill);
   }
+  return true;
 }
 
 // --- data loading ---
 async function loadExpenses() {
-  const res = await fetch(API.expenses);
-  if (!res.ok) throw new Error("Failed to load expenses (HTTP " + res.status + ")");
-  return res.json();
+  return fetchJSON(API.expenses);
 }
 
 async function loadSummary() {
-  const res = await fetch(API.summary);
-  if (!res.ok) throw new Error("Failed to load summary (HTTP " + res.status + ")");
-  return res.json();
+  return fetchJSON(API.summary);
 }
 
 async function refresh() {
   try {
     const [expenses, summary] = await Promise.all([loadExpenses(), loadSummary()]);
     renderExpenses(expenses);
-    renderSummary(summary);
+    const summaryOk = renderSummary(summary);
+    if (!summaryOk) {
+      setStatus("Summary is unavailable (the total could not be computed).", "error");
+    }
   } catch (err) {
     setStatus(err.message || "Failed to load data.", "error");
+    // Don't leave a stale or misleading summary on screen after a failure.
+    renderSummary(null);
   }
 }
 

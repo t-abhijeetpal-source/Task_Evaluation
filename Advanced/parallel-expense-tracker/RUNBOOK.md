@@ -68,7 +68,10 @@ Healthy response:
 {"status":"ok"}
 ```
 
-HTTP status `200` with `{"status":"ok"}` = service up and able to serve requests.
+HTTP status `200` with `{"status":"ok"}` = service up **and** the database is
+reachable (the endpoint runs a `SELECT 1` round-trip). If the DB is unreachable
+the endpoint returns `503 {"status":"unavailable",...}`, which the Docker/Compose
+HEALTHCHECK treats as unhealthy.
 
 - The Docker image and Compose service both define a `HEALTHCHECK` that polls
   `/api/health` every 30s. Check container health with:
@@ -79,8 +82,8 @@ HTTP status `200` with `{"status":"ok"}` = service up and able to serve requests
   ```
 
 - A connection refused / timeout means the process is down or the port is wrong.
-- A `200` on `/api/health` does **not** prove the DB is writable; confirm with a
-  `GET /api/expenses` (should return `200` and a JSON array).
+- A `200` confirms the DB is **readable** (`SELECT 1`); to confirm it is
+  **writable**, POST an expense (`201`) or `GET /api/expenses` (`200` + array).
 
 ---
 
@@ -175,9 +178,11 @@ Symptom: `sqlite3.OperationalError: unable to open database file`.
 
 - `{"error":"amount must be positive"}` → the `amount` was `<= 0`. Send a positive
   number.
-- FastAPI validation `422` (`detail` array) → request body is malformed: missing
-  `amount`/`category`, wrong types, or missing `Content-Type: application/json`.
-  Verify the JSON payload matches `{"amount":float,"category":str,"note"?:str}`.
+- Validation `422` (`detail` array) → the body is malformed: missing
+  `amount`/`category`, wrong types, missing `Content-Type: application/json`, or
+  an `amount` that is non-finite (NaN/Infinity), has more than 2 decimal places,
+  or exceeds 1e10. Verify the payload matches `{"amount":number,"category":str,"note"?:str}`
+  (see `CONTRACT.md`).
 
 ### UI loads but data does not update / API calls fail
 

@@ -3,7 +3,32 @@
 > System: Expense Tracker (FastAPI + SQLite + vanilla-JS frontend + pytest + Docker/CI).
 > Built by 6 parallel workstream agents against a locked contract; integrated, run, and verified by
 > the coordinator. Status: **ACCEPTED — integration-verified, tests pass, deploys in Docker.**
-> Date: 2026-06-17. Env: Python 3.14 · FastAPI · SQLAlchemy 2 · Docker (Colima).
+> Original date: 2026-06-17. Env (corrected): **Python 3.12.7** (pinned via mise; the original
+> "3.14" claim was wrong) · FastAPI · SQLAlchemy 2 · Docker (Colima).
+
+---
+
+## ⚠️ 2026-06-21 — Production-hardening update (supersedes claims below)
+
+The original report (below) **overclaimed** on several points. This section is the
+current source of truth; the original is retained for history. All items verified
+under Python 3.12.7 via `make a2-verify` (warm: ~8s) and `A2_DOCKER=1` (container).
+
+| Original claim | Reality at the time | Now |
+|---|---|---|
+| "DB schema ↔ ORM reconciled, with `CHECK`" | **False at runtime** — startup used `Base.metadata.create_all`, which emits no `CHECK` and no indexes; `db/schema.sql` was never executed | **Fixed.** Startup + tests apply `db/migrations/*.sql` (`app.database.run_migrations`). `CHECK(amount_cents>0)`, `CHECK(length(category)>0)`, and both indexes now exist at runtime and are asserted by `tests/test_schema_honesty.py`. |
+| `amount: float` end-to-end | NaN → **HTTP 500**; `0.1+0.2` drift; overflow → `total: null` | **Fixed.** Money is **integer cents**; aggregation in SQL is exact. NaN/Inf/sub-cent/overflow → `422` (regression-tested, incl. raw JSON literals). |
+| Shallow `/api/health` (200 even if DB dead) | true | **Fixed.** Deep health does `SELECT 1` → `503` on DB failure; Docker HEALTHCHECK acts on it. |
+| "16/16 tests" | true then | **40 tests** (unit + integration + money regression + schema-honesty + deep-health + validation/pagination). |
+| CI workflow nested in A2 folder | Would never run on GitHub | Root workflow `.github/workflows/a2-parallel-expense-tracker.yml` runs `pytest + integration smoke + perf gate + docker build/smoke`. |
+| pytest in the production image | true | **Fixed.** `requirements.txt` (prod) and `requirements-dev.txt` (tests) split; image installs prod only. |
+| No one-command verify / no `CONTRACT.md` | true | `make a2-verify`; `CONTRACT.md` is the locked contract. |
+| Frontend `fmtMoney(null)` → fake `$0.00` | true | Null/non-finite summary renders **"unavailable"** + error status; `fetch` has an 8s timeout. |
+| Temp test DB never cleaned | `mkdtemp` leaked | `pytest_sessionfinish` disposes the engine and removes the temp dir. |
+
+**A6 linkage:** `GET /api/summary` aggregates via SQL `GROUP BY` over an indexed
+integer-cents column. `scripts/perf_guard.py` gates p50 ≤ 50 ms @ 50k rows (40 ms warn band)
+(measured p50 ≈ 31–35 ms locally).
 
 ---
 
@@ -31,7 +56,7 @@ All 6 workstreams completed; reports in `docs/agent-analysis/A2_<role>.md`.
 | Backend ↔ Frontend serving | `app.mount("/", StaticFiles(html=True))` after router | ✅ `GET /` → 200, 5033 bytes; `/app.js` → 200 |
 | Tests ↔ System | conftest temp-DB override before import; TestClient | ✅ 16/16 pass |
 | CI ↔ Build | workflow: pip install → pytest → docker build | ✅ YAML valid; build step verified locally |
-| DB schema ↔ ORM | `db/schema.sql` matches `app/models.py` (REAL/TEXT/INTEGER, PK, CHECK) | ✅ reconciled to contract |
+| DB schema ↔ ORM | `db/schema.sql` matches `app/models.py` (REAL/TEXT/INTEGER, PK, CHECK) | ⚠️ **superseded** — the `CHECK`/indexes were NOT applied at runtime (`create_all`). Fixed via migrations; see the 2026-06-21 hardening update above. |
 
 **No component accepted without integration verification** (completion rule satisfied).
 

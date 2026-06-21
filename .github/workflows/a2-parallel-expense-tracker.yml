@@ -1,0 +1,101 @@
+name: A2 Parallel Expense Tracker
+
+# Verifies the A2 expense tracker at the REPO ROOT (GitHub only runs workflows
+# under the repository-root .github/workflows — a workflow nested inside the A2
+# folder never executes on GitHub). Mirrors `make a2-verify`:
+#   test  -> pytest + live HTTP integration smoke + frontend syntax check + A6 perf gate
+#   build -> docker build + run container + wait healthy + exercise API
+# Path-filtered so it only runs when A2, the A6 bench, or this workflow changes.
+on:
+  push:
+    paths:
+      - "Advanced/parallel-expense-tracker/**"
+      - "Advanced/performance-optimization/bench_summary.py"
+      - ".github/workflows/a2-parallel-expense-tracker.yml"
+  pull_request:
+    paths:
+      - "Advanced/parallel-expense-tracker/**"
+      - "Advanced/performance-optimization/bench_summary.py"
+      - ".github/workflows/a2-parallel-expense-tracker.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: a2-expense-tracker-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: "Advanced/parallel-expense-tracker"
+
+jobs:
+  test:
+    name: test (pytest + integration + perf)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: "Advanced/parallel-expense-tracker/requirements-dev.txt"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dev dependencies
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Unit + integration tests (pytest)
+        run: |
+          . .venv/bin/activate
+          python -m pytest -v --junitxml=test-results.xml
+
+      - name: Frontend syntax check (app.js)
+        run: node --check static/app.js
+
+      - name: Schema-honesty + live HTTP integration smoke
+        run: |
+          . .venv/bin/activate
+          PYTHON=python bash scripts/integration_smoke.sh
+
+      - name: Performance gate (p50 GET /api/summary)
+        run: |
+          . .venv/bin/activate
+          python scripts/perf_guard.py
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a2-test-results
+          path: "Advanced/parallel-expense-tracker/test-results.xml"
+          retention-days: 7
+
+      - name: Summary
+        if: success()
+        run: |
+          {
+            echo "### ✅ A2 expense tracker — tests passed"
+            echo "- pytest: unit + integration + money regression + schema-honesty + deep-health"
+            echo "- integration smoke: NaN→422 (not 500), exact integer-cent aggregation, static UI"
+            echo "- perf gate: p50 GET /api/summary within ceiling (A6 SQL GROUP BY intact)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    name: docker build + smoke
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image + container smoke test
+        run: bash scripts/docker_smoke.sh

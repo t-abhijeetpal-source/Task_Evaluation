@@ -1,8 +1,16 @@
-name: CI
+# NOTE: GitHub Actions only runs workflows located at the REPOSITORY ROOT
+# (.github/workflows/). This file lives inside the A2 subfolder, so GitHub will
+# NOT execute it. The authoritative, repo-root workflow that actually runs is:
+#
+#     .github/workflows/a2-parallel-expense-tracker.yml   (mirrors `make a2-verify`)
+#
+# This file is retained only as local documentation of the A2 pipeline and is
+# kept in sync (prod/dev requirements split, perf gate, docker smoke). To run
+# the full gate locally:  make a2-verify
+name: CI (A2 — local reference; runs at repo root)
 
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   test:
@@ -17,19 +25,19 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - name: Install dev dependencies
+        run: pip install -r requirements-dev.txt
 
       - name: Run tests
         run: pytest -v
 
   build:
-    name: Build image
+    name: Build image + smoke
     needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build Docker image
-        run: docker build -t expense-tracker:ci .
+      - name: Build + container smoke
+        run: bash scripts/docker_smoke.sh

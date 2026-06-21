@@ -23,7 +23,7 @@ os.environ["DATABASE_URL"] = f"sqlite:///{_tmp}/bench.db"
 # Make the A2 app importable when this script lives in the A6 folder.
 sys.path.insert(0, os.getcwd())
 
-from app.database import engine, Base, SessionLocal  # noqa: E402
+from app.database import engine, SessionLocal, run_migrations  # noqa: E402
 from app.models import Expense  # noqa: E402
 from app.main import app  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -32,12 +32,15 @@ CATEGORIES = ["food", "transport", "utilities", "groceries", "entertainment", "h
 
 
 def seed(n: int) -> None:
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
+    from sqlalchemy import text
+
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS expenses"))
+    run_migrations(engine)
     s = SessionLocal()
     rows = [
         {
-            "amount": float((i % 500) + 1) + 0.50,
+            "amount_cents": ((i % 500) + 1) * 100 + 50,
             "category": CATEGORIES[i % len(CATEGORIES)],
             "note": "n",
             "created_at": "2026-01-01T00:00:00+00:00",

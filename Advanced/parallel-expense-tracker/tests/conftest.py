@@ -4,9 +4,14 @@ CRITICAL: the temp SQLite database is configured at the TOP of this file,
 *before* the application (and its `engine`) are imported. The app reads
 DATABASE_URL at import time in app/database.py, so the env var must be set
 first to guarantee tests never touch the real ./data/expenses.db file.
+
+The test schema is created by the SAME migration runner the app uses at
+startup (app.database.run_migrations), so tests exercise the real runtime
+schema — CHECK constraints and indexes included — not an ORM approximation.
 """
 
 import os
+import shutil
 import tempfile
 
 # ---------------------------------------------------------------------------
@@ -25,7 +30,8 @@ import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.main import app  # noqa: E402
-from app.database import engine, Base  # noqa: E402
+from app.database import engine, run_migrations  # noqa: E402
+from app.models import Expense  # noqa: E402  (registers the ORM mapping)
 
 
 @pytest.fixture()
@@ -37,12 +43,21 @@ def client():
 
 @pytest.fixture(autouse=True)
 def _reset_database():
-    """Drop and recreate all tables before each test for full isolation.
+    """Reset to an empty, migration-applied schema before each test.
 
-    Running before every test guarantees each test starts from an empty
-    schema, so list ordering / summary aggregation assertions are
-    deterministic and independent of execution order.
+    Dropping the table and re-running the migrations (rather than ORM
+    create_all) keeps every test on the exact runtime schema, so list ordering
+    and summary aggregation assertions are deterministic and order-independent.
     """
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
+    with engine.begin() as conn:
+        from sqlalchemy import text
+
+        conn.execute(text("DROP TABLE IF EXISTS expenses"))
+    run_migrations(engine)
     yield
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Dispose the engine and remove the temp DB dir (no leaked tmp files)."""
+    engine.dispose()
+    shutil.rmtree(_TMP_DIR, ignore_errors=True)

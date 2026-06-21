@@ -10,9 +10,12 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code and static assets.
+# Copy application code, static assets, and DB migrations. The migrations are
+# applied at startup (single source of truth for the runtime schema), so they
+# MUST be present in the image.
 COPY app/ ./app
 COPY static/ ./static
+COPY db/ ./db
 
 # Create the data directory for the SQLite file and run as a non-root user.
 RUN mkdir -p /app/data \

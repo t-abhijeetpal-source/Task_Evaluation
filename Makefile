@@ -27,7 +27,16 @@ I1_DIR := "Intermediate/er-diagram"
 # I4 polyglot currency pair (FastAPI service + Node CLI, shared currency_core).
 I4_DIR := "Intermediate/polyglot-currency-pair"
 
-.PHONY: help bootstrap doctor setup-env verify test rust node python i1-verify i3-verify i3-flutter-verify i4-verify a3-integration clean
+# A2 parallel expense tracker (FastAPI + SQLite + vanilla JS + Docker).
+A2_DIR := "Advanced/parallel-expense-tracker"
+
+# A1 parallel-repo-analysis (multi-agent analysis reports + validator; offline, no target repo).
+A1_DIR := "Advanced/parallel-repo-analysis"
+
+# A6 performance optimization (profiles + optimizes A2's GET /api/summary).
+A6_DIR := "Advanced/performance-optimization"
+
+.PHONY: help bootstrap doctor setup-env verify test rust node python i1-verify i3-verify i3-flutter-verify i4-verify a1-validate a2-verify a2-docker-smoke a3-integration a6-verify clean
 
 help:  ## Show available targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) \
@@ -106,6 +115,48 @@ i4-verify:  ## Verify I4 polyglot pair (currency_core + service pytest + client 
 	@( cd $(I4_DIR)/node-client && $(RUN) npm install --silent && $(RUN) npm test ) || exit 1
 	@echo "-- live integration: 6 rate pairs + 4 exit codes over real HTTP --"
 	@$(RUN) bash "Intermediate/polyglot-currency-pair/integration-tests/run_integration.sh"
+
+# ---- A2 — parallel expense tracker (one-command production-grade verify) -------
+a2-verify:  ## Verify A2 (pytest + live HTTP integration + frontend smoke + A6 perf gate; A2_DOCKER=1 also runs docker smoke)
+	@echo "== a2: $(A2_DIR) =="
+	@( cd $(A2_DIR) && $(RUN) python -m venv .venv && . .venv/bin/activate \
+		&& pip -q install --upgrade pip >/dev/null \
+		&& pip -q install -r requirements-dev.txt \
+		&& echo "-- pytest (>=24 tests) --" && python -m pytest -q \
+		&& echo "-- frontend smoke: node --check static/app.js --" \
+		&& if command -v node >/dev/null 2>&1; then node --check static/app.js && echo "  app.js OK"; \
+		   else echo "  node not found — skipping JS syntax check"; fi \
+		&& echo "-- live HTTP integration smoke --" && PYTHON=python bash scripts/integration_smoke.sh \
+		&& echo "-- perf gate: p50 GET /api/summary (A6 linkage) --" && python scripts/perf_guard.py ) || exit 1
+	@if [ "$${A2_DOCKER:-0}" = "1" ]; then \
+		$(MAKE) a2-docker-smoke; \
+	else \
+		echo "-- docker smoke: SKIPPED (run 'A2_DOCKER=1 make a2-verify' or 'make a2-docker-smoke') --"; \
+	fi
+	@echo "== ✅ A2 VERIFY PASSED =="
+
+a2-docker-smoke:  ## Build the A2 image, run it, wait for healthy, exercise the API, tear down (skips cleanly if docker absent)
+	@bash $(A2_DIR)/scripts/docker_smoke.sh
+
+# ---- A6 — performance optimization (validate deliverable + live bench on 3.12) -
+a6-verify:  ## Verify A6 (deliverable validation + pytest + compare-before bench + perf gate, Python 3.12)
+	@echo "== a6: $(A6_DIR) =="
+	@bash $(A6_DIR)/scripts/validate_a6_deliverable.sh
+	@( cd $(A2_DIR) && $(RUN) python -m venv .venv && . .venv/bin/activate \
+		&& pip -q install --upgrade pip >/dev/null \
+		&& pip -q install -r requirements-dev.txt \
+		&& echo "-- behavior preserved: pytest --" && python -m pytest -q \
+		&& echo "-- compare-before: naive ORM vs SQL GROUP BY --" \
+		&& python ../performance-optimization/bench_summary.py --compare-before \
+		&& echo "-- perf gate: p50 GET /api/summary <= ceiling --" && python scripts/perf_guard.py ) || exit 1
+	@echo "== ✅ A6 VERIFY PASSED =="
+
+# ---- A1 — parallel repo analysis (validate deliverables; offline, no target repo) -
+a1-validate:  ## Validate the A1 parallel-repo-analysis deliverables (9 reports + structure/content gate)
+	@echo "== a1: $(A1_DIR) =="
+	@bash $(A1_DIR)/scripts/validate_a1_reports.sh
+	@bash $(A1_DIR)/run_a1_analysis.sh --validate-only
+	@echo "== ✅ A1 VALIDATE PASSED =="
 
 a3-integration:  ## Run the A3 polyglot end-to-end integration test
 	@bash "Advanced/polyglot-fraud-system/integration-tests/run_integration.sh"
