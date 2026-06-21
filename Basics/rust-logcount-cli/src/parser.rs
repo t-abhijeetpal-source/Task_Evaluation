@@ -1,11 +1,7 @@
-//! Parsing layer.
-//!
-//! Turns raw log text (or a file on disk) into `LogCounts`. File reading
-//! returns a `Result` so the CLI can handle a missing file gracefully
-//! instead of panicking.
+//! Parsing layer — streaming line-by-line counting (constant memory).
 
-use std::fs;
-use std::io;
+use std::fs::File;
+use std::io::{self, BufRead, BufReader};
 use std::path::Path;
 
 use crate::models::{LogCounts, LogLevel};
@@ -21,10 +17,29 @@ pub fn count_levels(content: &str) -> LogCounts {
     counts
 }
 
-/// Read a log file from disk and count its levels.
-///
-/// Propagates `io::Error` (e.g. `NotFound`) to the caller — it does not panic.
+/// Incrementally count levels from any line iterator.
+pub fn count_lines<I, S>(lines: I) -> LogCounts
+where
+    I: IntoIterator<Item = io::Result<S>>,
+    S: AsRef<str>,
+{
+    let mut counts = LogCounts::default();
+    for line in lines {
+        let line = line.expect("read log line");
+        if let Some(level) = LogLevel::from_line(line.as_ref()) {
+            counts.record(level);
+        }
+    }
+    counts
+}
+
+/// Stream a log file from disk and count its levels.
 pub fn count_file(path: &Path) -> io::Result<LogCounts> {
-    let content = fs::read_to_string(path)?;
-    Ok(count_levels(&content))
+    let file = File::open(path)?;
+    Ok(count_lines(BufReader::new(file).lines()))
+}
+
+/// Stream stdin and count log levels.
+pub fn count_stdin() -> io::Result<LogCounts> {
+    Ok(count_lines(BufReader::new(io::stdin()).lines()))
 }

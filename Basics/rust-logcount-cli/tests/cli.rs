@@ -78,6 +78,33 @@ fn classification_is_case_sensitive() {
     assert_eq!(counts, LogCounts { info: 1, warn: 0, error: 0 });
 }
 
+#[test]
+fn counts_json_structured_lines() {
+    let input = r#"{"level":"INFO","msg":"boot"}
+{"level":"ERROR","msg":"fail"}
+{"level":"WARN","msg":"slow"}"#;
+    let counts = count_levels(input);
+    assert_eq!(counts, LogCounts { info: 1, warn: 1, error: 1 });
+}
+
+#[test]
+fn streams_large_file_without_loading_whole_file() {
+    use std::io::Write as _;
+    let dir = std::env::temp_dir();
+    let path = dir.join(format!("logcount_stream_{}.log", std::process::id()));
+    {
+        let mut file = std::fs::File::create(&path).expect("create temp log");
+        for _ in 0..10_000 {
+            writeln!(file, "INFO ok").unwrap();
+        }
+        writeln!(file, "ERROR done").unwrap();
+    }
+    let counts = count_file(&path).expect("count temp file");
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(counts.info, 10_000);
+    assert_eq!(counts.error, 1);
+}
+
 // --- End-to-end: drive the actual compiled binary -------------------------
 // `CARGO_BIN_EXE_logcount` is injected by cargo for integration tests.
 const BIN: &str = env!("CARGO_BIN_EXE_logcount");

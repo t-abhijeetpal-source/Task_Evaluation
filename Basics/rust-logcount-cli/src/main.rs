@@ -10,7 +10,7 @@
 //!     logcount --help | --version
 
 use std::env;
-use std::io::{self, ErrorKind, Read};
+use std::io::ErrorKind;
 use std::path::Path;
 use std::process;
 
@@ -69,10 +69,7 @@ fn main() {
     };
 
     let counts_result = if source == "-" {
-        let mut buf = String::new();
-        io::stdin()
-            .read_to_string(&mut buf)
-            .map(|_| parser::count_levels(&buf))
+        parser::count_stdin()
     } else {
         parser::count_file(Path::new(source))
     };

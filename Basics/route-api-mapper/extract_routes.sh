@@ -10,11 +10,22 @@
 # both and emits YAML you can commit and `git diff` on every release.
 #
 # Usage:
-#   ./extract_routes.sh [REPO_ROOT] > B2_routes.yaml
-#   diff <(./extract_routes.sh) B2_routes.yaml   # detect drift in CI
+#   REPO_ROOT=/path/to/android-monorepo ./extract_routes.sh > B2_routes.yaml
+#   ./extract_routes.sh /path/to/android-monorepo > B2_routes.yaml
+#   diff <(./extract_routes.sh "$REPO_ROOT") B2_routes.yaml   # detect drift in CI
 set -euo pipefail
 
-ROOT="${1:-/Users/abhijeetpal/Desktop/workspace/android-monorepo/android-monorepo}"
+if [[ $# -ge 1 ]]; then
+  ROOT="$1"
+elif [[ -n "${REPO_ROOT:-}" ]]; then
+  ROOT="$REPO_ROOT"
+else
+  echo "Error: pass REPO_ROOT as the first argument or set the REPO_ROOT env var." >&2
+  echo "Example: REPO_ROOT=/path/to/android-monorepo $0 > B2_routes.yaml" >&2
+  exit 2
+fi
+
+[[ -d "$ROOT" ]] || { echo "Error: repo root not found: $ROOT" >&2; exit 2; }
 cd "$ROOT"
 
 SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"

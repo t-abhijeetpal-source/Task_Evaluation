@@ -23,8 +23,29 @@ impl LogLevel {
             "INFO" => Some(LogLevel::Info),
             "WARN" => Some(LogLevel::Warn),
             "ERROR" => Some(LogLevel::Error),
-            _ => None,
+            _ => Self::from_json_line(line),
         }
+    }
+
+    /// Recognise structured JSON log lines like `{"level":"ERROR",...}`.
+    fn from_json_line(line: &str) -> Option<LogLevel> {
+        let trimmed = line.trim();
+        if !trimmed.starts_with('{') {
+            return None;
+        }
+        for (needle, level) in [
+            ("\"level\":\"INFO\"", LogLevel::Info),
+            ("\"level\":\"WARN\"", LogLevel::Warn),
+            ("\"level\":\"ERROR\"", LogLevel::Error),
+            ("\"level\": \"INFO\"", LogLevel::Info),
+            ("\"level\": \"WARN\"", LogLevel::Warn),
+            ("\"level\": \"ERROR\"", LogLevel::Error),
+        ] {
+            if trimmed.contains(needle) {
+                return Some(level);
+            }
+        }
+        None
     }
 }
 

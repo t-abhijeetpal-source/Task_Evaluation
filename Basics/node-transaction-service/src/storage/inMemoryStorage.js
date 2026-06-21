@@ -1,38 +1,46 @@
 'use strict';
 
+const { toCents } = require('../money');
+
 /**
- * Storage layer — in-memory persistence with auto-incrementing ids.
- *
- * Swapping this for a real database would not require changes to the
- * service or controller layers, which only depend on its public methods.
+ * Storage layer — in-memory persistence with O(1) running balance.
  */
 class InMemoryStorage {
   constructor() {
     this._transactions = [];
     this._nextId = 1;
+    this._balanceCents = 0;
   }
 
-  /**
-   * Assign an id, persist, and return the stored transaction.
-   */
   add(transaction) {
     transaction.id = this._nextId++;
     this._transactions.push(transaction);
+    const cents = toCents(transaction.amount);
+    this._balanceCents += transaction.type === 'credit' ? cents : -cents;
     return transaction;
   }
 
-  /** Return all stored transactions (a shallow copy). */
-  listAll() {
-    return [...this._transactions];
+  listAll(limit = null, offset = 0) {
+    const start = Math.max(0, offset);
+    const slice = limit == null
+      ? this._transactions.slice(start)
+      : this._transactions.slice(start, start + limit);
+    return slice.map((t) => ({ ...t }));
   }
 
-  /** Reset the store — used by tests for isolation. */
+  balanceCents() {
+    return this._balanceCents;
+  }
+
   clear() {
     this._transactions = [];
     this._nextId = 1;
+    this._balanceCents = 0;
   }
 }
 
-// Module-level singleton used by the running app.
-module.exports = new InMemoryStorage();
+const defaultStorage = new InMemoryStorage();
+
+module.exports = defaultStorage;
 module.exports.InMemoryStorage = InMemoryStorage;
+module.exports.createStorage = () => new InMemoryStorage();

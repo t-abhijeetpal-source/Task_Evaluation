@@ -1,0 +1,184 @@
+{
+  "version": "1.0",
+  "description": "Shared behavioral vectors for B4 (FastAPI) and B5 (Node). Both services must pass.",
+  "scenarios": [
+    {
+      "name": "create_returns_id",
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/transactions",
+          "body": { "amount": 100, "type": "credit", "description": "salary" },
+          "expectStatus": 201,
+          "expectBody": { "id": 1 }
+        }
+      ]
+    },
+    {
+      "name": "list_after_two_creates",
+      "reset": true,
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/transactions",
+          "body": { "amount": 100, "type": "credit" },
+          "expectStatus": 201
+        },
+        {
+          "method": "POST",
+          "path": "/transactions",
+          "body": { "amount": 40, "type": "debit", "description": "lunch" },
+          "expectStatus": 201
+        },
+        {
+          "method": "GET",
+          "path": "/transactions",
+          "expectStatus": 200,
+          "expectLength": 2,
+          "expectFirst": { "id": 1, "amount": 100, "type": "credit" },
+          "expectSecond": { "id": 2, "amount": 40, "type": "debit" }
+        }
+      ]
+    },
+    {
+      "name": "balance_credits_minus_debits",
+      "reset": true,
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/transactions",
+          "body": { "amount": 1000, "type": "credit" },
+          "expectStatus": 201
+        },
+        {
+          "method": "POST",
+          "path": "/transactions",
+          "body": { "amount": 300, "type": "debit" },
+          "expectStatus": 201
+        },
+        {
+          "method": "POST",
+          "path": "/transactions",
+          "body": { "amount": 200, "type": "debit" },
+          "expectStatus": 201
+        },
+        {
+          "method": "GET",
+          "path": "/balance",
+          "expectStatus": 200,
+          "expectBody": { "balance": 500 }
+        }
+      ]
+    },
+    {
+      "name": "balance_empty_is_zero",
+      "reset": true,
+      "steps": [
+        {
+          "method": "GET",
+          "path": "/balance",
+          "expectStatus": 200,
+          "expectBody": { "balance": 0 }
+        }
+      ]
+    },
+    {
+      "name": "balance_no_float_drift",
+      "reset": true,
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/transactions",
+          "body": { "amount": 0.1, "type": "credit" },
+          "expectStatus": 201
+        },
+        {
+          "method": "POST",
+          "path": "/transactions",
+          "body": { "amount": 0.2, "type": "credit" },
+          "expectStatus": 201
+        },
+        {
+          "method": "GET",
+          "path": "/balance",
+          "expectStatus": 200,
+          "expectBody": { "balance": 0.3 }
+        }
+      ]
+    },
+    {
+      "name": "balance_mixed_decimals_exact",
+      "reset": true,
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/transactions",
+          "body": { "amount": 100.1, "type": "credit" },
+          "expectStatus": 201
+        },
+        {
+          "method": "POST",
+          "path": "/transactions",
+          "body": { "amount": 0.05, "type": "debit" },
+          "expectStatus": 201
+        },
+        {
+          "method": "POST",
+          "path": "/transactions",
+          "body": { "amount": 0.05, "type": "debit" },
+          "expectStatus": 201
+        },
+        {
+          "method": "GET",
+          "path": "/balance",
+          "expectStatus": 200,
+          "expectBody": { "balance": 100 }
+        }
+      ]
+    }
+  ],
+  "validationFailures": [
+    {
+      "name": "reject_zero_amount",
+      "body": { "amount": 0, "type": "credit" },
+      "expectStatus": 422
+    },
+    {
+      "name": "reject_invalid_type",
+      "body": { "amount": 50, "type": "transfer" },
+      "expectStatus": 422
+    },
+    {
+      "name": "reject_sub_cent_precision",
+      "body": { "amount": 9.999, "type": "credit" },
+      "expectStatus": 422
+    },
+    {
+      "name": "reject_over_max_amount",
+      "body": { "amount": 1000000001, "type": "credit" },
+      "expectStatus": 422
+    },
+    {
+      "name": "reject_description_too_long",
+      "body": { "amount": 5, "type": "credit", "description": "REPEAT_X_501" },
+      "expectStatus": 422
+    }
+  ],
+  "observability": [
+    {
+      "name": "health_ok",
+      "method": "GET",
+      "path": "/health",
+      "expectStatus": 200,
+      "expectBodyKeys": ["status", "version"]
+    },
+    {
+      "name": "request_id_echoed",
+      "method": "GET",
+      "path": "/health",
+      "expectStatus": 200,
+      "headers": { "x-request-id": "trace-contract-123" },
+      "expectHeader": { "x-request-id": "trace-contract-123" }
+    }
+  ]
+}

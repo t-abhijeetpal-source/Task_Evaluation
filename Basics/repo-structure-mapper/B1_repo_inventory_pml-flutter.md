@@ -5,10 +5,10 @@
 | Field | Value |
 |---|---|
 | **Repository** | `flutter_pml_app` (Paytm Money trading Flutter module) |
-| **Path** | `/Users/abhijeetpal/Desktop/workspace/android-monorepo/flutter/pml-flutter` |
+| **Path** | `android-monorepo/flutter/pml-flutter (external analysis target)` |
 | **Depth mode run** | **Default / Standard** — Phases 0–6 + 8 (with cheap Phase 7 static-analysis notes) |
 | **Date** | 2026-06-17 |
-| **Agent spec** | `/Users/abhijeetpal/Desktop/workspace/Tasks/Basics/repo-structure-mapper/B1_agent.md` |
+| **Agent spec** | `Basics/repo-structure-mapper/B1_agent.md` |
 | **Version** | `5.0.0+2` (`pubspec.yaml:19`) — VERIFIED |
 | **Analyzed commit** | `1a35bda75` (committed 2026-06-03) — all counts below re-derived against this exact SHA; re-run the commands in §8 after any `git pull` to refresh. |
 

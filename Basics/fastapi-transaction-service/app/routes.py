@@ -1,13 +1,8 @@
-"""API layer — HTTP routing only.
-
-Routes translate HTTP <-> service calls. They contain NO business logic:
-every endpoint delegates to TransactionService. Input validation is handled
-declaratively by the Pydantic schemas in the function signatures.
-"""
+"""API layer — HTTP routing only."""
 
 from typing import List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.schemas import (
     BalanceResponse,
@@ -16,14 +11,19 @@ from app.schemas import (
     TransactionOut,
 )
 from app.services import TransactionService
-from app.storage import storage
+from app.storage import InMemoryStorage, storage
 
 router = APIRouter()
 
 
-def get_service() -> TransactionService:
-    """Dependency provider — wires the service to the singleton store."""
-    return TransactionService(storage)
+def get_store() -> InMemoryStorage:
+    """Dependency provider — wires routes to the active storage instance."""
+    return storage
+
+
+def get_service(store: InMemoryStorage = Depends(get_store)) -> TransactionService:
+    """Dependency provider — wires the service to storage."""
+    return TransactionService(store)
 
 
 @router.post("/transactions", response_model=CreateResponse, status_code=201)
@@ -38,10 +38,12 @@ def create_transaction(
 
 @router.get("/transactions", response_model=List[TransactionOut])
 def list_transactions(
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
     service: TransactionService = Depends(get_service),
 ) -> List[TransactionOut]:
-    """List all transactions."""
-    return service.list_transactions()
+    """List transactions with optional pagination."""
+    return service.list_transactions(limit=limit, offset=offset)
 
 
 @router.get("/balance", response_model=BalanceResponse)

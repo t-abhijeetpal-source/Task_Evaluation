@@ -1,0 +1,56 @@
+name: Basics (B1–B6)
+
+# Validates the Basics tier:
+#   B1 — inventory artifact structure
+#   B2 — committed route map + portable extract script (live diff when REPO_ROOT secret/path available)
+#   B3 — test-discovery staleness anchors
+#   B4/B5 — shared contract vectors (Basics/fixtures/transaction-vectors.json)
+#   B6 — rust-logcount-cli cargo test
+on:
+  push:
+    paths:
+      - "Basics/**"
+      - "Makefile"
+      - ".github/workflows/basics.yml"
+  pull_request:
+    paths:
+      - "Basics/**"
+      - "Makefile"
+      - ".github/workflows/basics.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: basics-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: make basics-verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Run Basics verification
+        run: make basics-verify
+
+      - name: Summary
+        if: success()
+        run: |
+          {
+            echo "### ✅ Basics tier verified"
+            echo "- B1 inventory artifact structure"
+            echo "- B2 route map committed YAML (+ offline portable script check)"
+            echo "- B3 test-discovery staleness anchors"
+            echo "- B4/B5 shared contract vectors"
+            echo "- B6 rust-logcount-cli tests"
+          } >> "$GITHUB_STEP_SUMMARY"
