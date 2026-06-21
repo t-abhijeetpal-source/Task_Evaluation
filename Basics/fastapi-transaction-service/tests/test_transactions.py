@@ -81,3 +81,86 @@ def test_rejects_invalid_type(client):
         json={"amount": 50, "type": "transfer", "description": "nope"},
     )
     assert resp.status_code == 422
+
+
+# --- Money correctness: the float traps gt=0 alone lets through -------------
+def test_rejects_sub_cent_precision(client):
+    """9.999 has 3 decimals — not representable money."""
+    resp = client.post("/transactions", json={"amount": 9.999, "type": "credit"})
+    assert resp.status_code == 422
+
+
+def test_rejects_non_finite_amount(client):
+    """inf must never enter the ledger.
+
+    `1e500` is valid JSON syntax that `json.loads` parses to `float('inf')`,
+    so this exercises the server-side isfinite guard (not client serialisation).
+    """
+    resp = client.post(
+        "/transactions",
+        content='{"amount": 1e500, "type": "credit"}',
+        headers={"content-type": "application/json"},
+    )
+    assert resp.status_code == 422
+
+
+def test_rejects_amount_over_max(client):
+    resp = client.post(
+        "/transactions", json={"amount": 1_000_000_001, "type": "credit"}
+    )
+    assert resp.status_code == 422
+
+
+def test_balance_is_exact_no_float_drift(client):
+    """0.1 + 0.2 must equal 0.30, not 0.30000000000000004."""
+    client.post("/transactions", json={"amount": 0.1, "type": "credit"})
+    client.post("/transactions", json={"amount": 0.2, "type": "credit"})
+
+    resp = client.get("/balance")
+    assert resp.status_code == 200
+    assert resp.json() == {"balance": 0.3}
+
+
+def test_balance_mixed_decimals_exact(client):
+    client.post("/transactions", json={"amount": 100.10, "type": "credit"})
+    client.post("/transactions", json={"amount": 0.05, "type": "debit"})
+    client.post("/transactions", json={"amount": 0.05, "type": "debit"})
+
+    resp = client.get("/balance")
+    assert resp.json() == {"balance": 100.0}
+
+
+def test_validation_error_envelope_is_consistent(client):
+    """Errors come back as {error, detail}, not FastAPI's raw default."""
+    resp = client.post("/transactions", json={"amount": -5, "type": "credit"})
+    assert resp.status_code == 422
+    body = resp.json()
+    assert body["error"] == "validation_failed"
+    assert isinstance(body["detail"], list)
+
+
+def test_description_too_long_rejected(client):
+    resp = client.post(
+        "/transactions",
+        json={"amount": 5, "type": "credit", "description": "x" * 501},
+    )
+    assert resp.status_code == 422
+
+
+# --- Observability: request id + health version ----------------------------
+def test_health_reports_version(client):
+    resp = client.get("/health")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "ok"
+    assert "version" in body
+
+
+def test_request_id_is_echoed(client):
+    resp = client.get("/health")
+    assert resp.headers.get("x-request-id")
+
+
+def test_supplied_request_id_is_preserved(client):
+    resp = client.get("/health", headers={"x-request-id": "trace-123"})
+    assert resp.headers.get("x-request-id") == "trace-123"

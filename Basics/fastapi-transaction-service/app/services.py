@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import List
 
 from app.models import Transaction, TransactionType
+from app.money import from_cents, to_cents
 from app.schemas import TransactionCreate
 from app.storage import InMemoryStorage
 
@@ -34,11 +35,17 @@ class TransactionService:
         return self._store.list_all()
 
     def get_balance(self) -> float:
-        """balance = sum(credits) - sum(debits)."""
-        balance = 0.0
+        """balance = sum(credits) - sum(debits).
+
+        Summed in integer minor units (cents) so the result is exact — no
+        binary-float drift (e.g. 0.1 + 0.2). Converted back to a 2-dp number
+        only for the response.
+        """
+        balance_cents = 0
         for txn in self._store.list_all():
+            cents = to_cents(txn.amount)
             if txn.type == TransactionType.CREDIT:
-                balance += txn.amount
+                balance_cents += cents
             else:
-                balance -= txn.amount
-        return balance
+                balance_cents -= cents
+        return from_cents(balance_cents)

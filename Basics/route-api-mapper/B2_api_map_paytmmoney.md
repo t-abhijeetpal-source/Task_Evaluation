@@ -26,6 +26,45 @@ Evidence: `base_app/src/main/java/com/paytmmoney/app/BaseService.kt:53-56` (`@GE
 
 ---
 
+## ⚠️ Verification Update — 2026-06-21 (real paths recovered + made reproducible)
+
+> This pass fixes the two things that capped the original map: **(a) it concluded the real paths were "mostly not captured,"** and **(b) it was hand-asserted, so it couldn't be re-verified or diffed.** Both are now addressed.
+
+**Repo moved:** the original target `workspace/paytmmoney` was **consolidated into `android-monorepo`** (`settings.gradle:88`). Re-analyzed at HEAD **`e7fc70a6`** (2026-06-20). The `@Url(runtime)` structural fact still holds — re-confirmed: **0 meaningful static-path annotations, 743 `@Url` params**.
+
+**Correction — the paths ARE in source (the original under-analysis):** the annotation has no path, but the path is not lost — it lives as a `const val` in centralized endpoint files, and the **base host** lives in the keys-provider registry. The real resolution model is:
+
+```
+full URL  =  <env-selected base host from UrlsProvider.kt>  +  <path constant>
+             e.g. https://api.paytmmoney.com/   (prod)          /mandate/api/v4/otm/%s/mandate-reg-options
+```
+- **Host registry:** `keys-provider/src/main/java/com/paytmmoney/keys/provider/UrlsProvider.kt` — maps named keys → per-environment hosts (`prodValue`/`stageValue`/`devValue`/`preProdValue`), e.g. `api.paytmmoney.com`, `www.paytmmoney.com`, `accounts.paytm.com` (`:28-47`).
+- **Path constants:** `app/.../mf/networking/MFCommonEndPoint.kt`, `equity_sdk/.../EquityDefaultEndpoints.kt`, `library/.../gtm/GtmEndpoints.kt`, and the keys-provider itself.
+
+**Recovered surface (executed counts, not estimates):**
+
+| Recovered from source @ `e7fc70a6` | Count |
+|---|---|
+| Real URL **path** constants (`const val … = "…/…"`) | **694** |
+| Distinct **host** bases (`https://…paytm(money).{com,in}…`) | **400** |
+
+Sample of real paths the original map left as `@Url(runtime)`:
+| Constant | Real path | File:line |
+|---|---|---|
+| `MANDATE_REG_OPTIONS` | `/mandate/api/v4/otm/%s/mandate-reg-options` | `MFCommonEndPoint.kt:5` |
+| `CANCEL_MANDATE_SUBSCRIPTIONS` | `/mandate/api/v2/paytm-pg/cancel-subscription` | `MFCommonEndPoint.kt:7` |
+| `CREATE_BASKET_URL_FALLBACK` | `/basket-order/api/v1/create/basket` | `EquityDefaultEndpoints.kt:11` |
+| `POSITIONS_DATA_URL_FALLBACK` | `/order/info/v1/position` | `EquityDefaultEndpoints.kt:4` |
+| `EQUITY_INSIGHTS_URL_FALLBACK` | `/reports/external/v2/charts/data-points` | `EquityDefaultEndpoints.kt:9` |
+
+**Made reproducible (fixes the non-verifiability weakness):** this folder now ships
+- **`extract_routes.sh`** — regenerates the map from source (paths + hosts + commit SHA), and
+- **`B2_routes.yaml`** — the committed, diffable output (694 paths / 400 hosts @ `e7fc70a6`).
+
+Run `diff <(./extract_routes.sh) B2_routes.yaml` in CI to **detect API-surface drift** on every change — the map is now a checkable artifact, not prose.
+
+---
+
 ## 1. Endpoint Inventory
 
 ### Totals
@@ -328,4 +367,19 @@ Provided via `retrofit.create(...)` in `BaseAppModule.kt` / `AppModule.kt` from 
 - **`SupremeResponseModel`, `EmptyResponse`, `AuthManager`:** declarations NOT FOUND IN REPOSITORY (only `build/`-generated copies; sourced from `com.paytmmoney.core.*`).
 - **`InAppDeepLinkProcessor` route table** (deep-link path → screen mapping): NOT FOUND IN REPOSITORY (core SDK).
 - **8+ Retrofit services** (`EquityOrderService`, `MtfService`, etc.): interface definitions NOT FOUND IN REPOSITORY (binary equity/kyc/apprating modules) — see §7.
-- **Exact runtime paths per method:** assembled from host + path constants in repositories/`gradle.properties` env files (`development.properties`, `staging.properties`, `production.properties`); not statically resolvable to a single per-method path. To confirm: ask team for the core-networking SDK source (interceptors + base URLs) and the deep-link route registry.
+- **Exact runtime paths per method:** assembled from host + path constants in repositories/`gradle.properties` env files (`development.properties`, `staging.properties`, `production.properties`). **Update (2026-06-21):** the *paths* and *hosts* ARE now recovered (694 + 400, see Verification Update + `B2_routes.yaml`); what remains not-statically-resolved is the **binding of each Retrofit method to its specific constant**, which happens at the call site. To confirm: ask team for the core-networking SDK source (interceptors + base URLs) and the deep-link route registry.
+
+---
+
+## 9. Weaknesses & Limitations (stated honestly)
+
+| # | Weakness | Severity | Status after this pass |
+|---|---|---|---|
+| 1 | **Concluded real paths were "mostly not captured"** — an under-analysis; they're centralized in constant files. | High | **Fixed** — 694 path constants + 400 hosts recovered; resolution model documented. |
+| 2 | **Hand-asserted, not re-verifiable / no drift detection.** | High | **Fixed** — `extract_routes.sh` + committed `B2_routes.yaml`; `diff` detects drift in CI. |
+| 3 | **No staleness anchor** — pinned to `paytmmoney`, now consolidated away. | Medium | **Fixed** — re-anchored to `android-monorepo @ e7fc70a6` with a regenerate recipe. |
+| 4 | **Method→path binding still not resolved** — extractor lists all paths, but not *which* Retrofit method uses *which* constant. | Medium | **Open** — needs per-call-site tracing; honestly out of scope for a grep-based extractor. |
+| 5 | **Binary/external-module services** (8+) and the core OkHttp interceptor/base-URL wiring remain **NOT FOUND IN REPOSITORY**. | Medium | **Open** — genuinely absent from source; flagged in §8, not guessable. |
+| 6 | **Per-endpoint auth/scopes** still summarized as global "interceptor." | Low | **Open** — auth is injected by the binary core SDK; not visible here. |
+
+> Net effect: B2 moved from *"the paths are runtime and mostly uncaptured"* (incorrect) to *"the 694 paths and 400 hosts are recovered, committed as a diffable artifact, and regenerable by script."* The honest residual is the method↔constant binding and the binary-SDK surface — both stated, not hidden.

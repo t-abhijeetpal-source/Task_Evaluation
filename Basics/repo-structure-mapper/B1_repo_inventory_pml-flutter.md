@@ -10,6 +10,7 @@
 | **Date** | 2026-06-17 |
 | **Agent spec** | `/Users/abhijeetpal/Desktop/workspace/Tasks/Basics/repo-structure-mapper/B1_agent.md` |
 | **Version** | `5.0.0+2` (`pubspec.yaml:19`) — VERIFIED |
+| **Analyzed commit** | `1a35bda75` (committed 2026-06-03) — all counts below re-derived against this exact SHA; re-run the commands in §8 after any `git pull` to refresh. |
 
 > Sections per spec: 4 (Architecture), 6 (Dependency mapping), 12 (Static analysis) are included at a light level appropriate to standard mode. Phase 9 (full business-flow sequence trace) was **skipped** (full/onboarding mode only); a single cited data-flow path is given instead.
 
@@ -109,9 +110,9 @@ flowchart LR
 | Violation | File:line | Evidence |
 |---|---|---|
 | Presentation view model imports **data-layer datasource** + **bridge repo impl** directly (bypasses domain) | `lib/features/expert_picks/presentation/expert_picks_list_view_model.dart:5,7` | `import '../../../core/bridge/data/repositories/pml_bridge_repository_impl.dart';` and `import '../data/expert_picks_remote_datasource.dart';` — VERIFIED |
-| Presentation view model imports bridge repo impl + multiple `TFCOptions/data/` items | `lib/features/orderpad/presentation/viewmodels/tfc_orderpad_viewmodel.dart` (imports from `data/`) | Reported by inventory sweep — INFERRED (pattern match; sampled, not fully read) |
+| Violation is **systemic, not isolated** — presentation files importing a data-layer symbol (`/data/`, `_repository_impl.dart`, `_remote_datasource.dart`, data models) | **296 files** under `lib/features/*/presentation/` | VERIFIED — re-derived (no longer a sample): `grep -rlnE "^import .*(/data/|_repository_impl\.dart|_remote_datasource\.dart|_local_datasource\.dart)" lib/features/*/presentation --include="*.dart" \| wc -l` → `296`. Examples: `agentic_bot/presentation/pages/agentic_bot_demo_page.dart:7`, `basket_order/presentation/ui/pages/trade_cart_screen.dart:10`. |
 
-> The clean-architecture rule "presentation depends only on domain abstractions" is **not consistently enforced**; the bridge repo impl is a singleton commonly imported directly. Worth flagging in code review.
+> The clean-architecture rule "presentation depends only on domain abstractions" is **not consistently enforced**: **296 of the presentation files import a data-layer symbol directly**, and the bridge repo impl singleton (`pml_bridge_repository_impl.dart`) is the most common offender. This is a structural finding, not an anecdote — worth a lint rule (`import_lint` / custom `analysis_options.yaml` rule banning `data/` imports from `presentation/`).
 
 ---
 
@@ -233,9 +234,24 @@ Edges verified from: `lib/main.dart:38-57` (imports of core/* + feature routes),
 
 ## 8. Artifact Inventory
 
-> Counts from naming-convention sweeps (INFERRED counts); cited representatives VERIFIED by path.
+### Verified counts (re-derived @ `1a35bda75`)
 
-### ViewModels / State holders (~63 `*viewmodel*`, ~163 `extends StateNotifier`, 42 `*_provider`)
+Every count below was **executed** against the analyzed commit — the exact command is given so any reader can reproduce it. (This replaces the earlier naming-sweep estimates, several of which were materially off — see the "was" column.)
+
+| Artifact | Command (run from repo root) | **Verified count** | Earlier estimate |
+|---|---|---|---|
+| Feature modules | `find lib/features -maxdepth 1 -mindepth 1 -type d \| wc -l` | **18** | ~18 ✅ |
+| ViewModel files | `find lib -type f \( -iname "*view_model*.dart" -o -iname "*viewmodel*.dart" \) \| wc -l` | **114** | ~63 ❌ (undercounted) |
+| `extends StateNotifier` | `grep -rln "extends StateNotifier" lib --include="*.dart" \| wc -l` | **147** | ~163 ❌ (overcounted) |
+| Use-case files | `find lib -type f \( -iname "*usecase*.dart" -o -iname "*use_case*.dart" \) \| wc -l` | **125** | ~100 ❌ |
+| Repository impls | `find lib -type f -iname "*repository_impl*.dart" \| wc -l` | **46** | — |
+| Abstract repo contracts | `find lib -type f -path "*domain/repositories/*.dart" \| wc -l` | **64** | (impls+contracts ≈ "~104") |
+| Model files | `find lib -type f -iname "*model*.dart" \| wc -l` | **227** | ~136 ❌ (undercounted by ~40%) |
+| `*_provider` files | `find lib -type f -iname "*_provider*.dart" \| wc -l` | **100** | 42 ❌ (undercounted by >2×) |
+
+> **Why this matters:** the original sweep was wrong by up to ~2.4× (providers) and ~40% (models). The lesson — and the fix — is that an inventory count is only trustworthy when it ships the command that produced it.
+
+### ViewModels / State holders (**114** `*view_model*`/`*viewmodel*` files, **147** `extends StateNotifier`, **100** `*_provider`)
 
 | Name | File | Status |
 |---|---|---|
@@ -256,15 +272,15 @@ Edges verified from: `lib/main.dart:38-57` (imports of core/* + feature routes),
 
 | Group | Count (approx) | Representative | Status |
 |---|---|---|---|
-| Repository contracts + impls (`*repository*.dart`) | ~104 files | `OptionChainRepository` / `…Impl`; `PMLBridgeRepository` / `…Impl` (`lib/core/bridge/{domain,data}/repositories/`) | VERIFIED (samples) / INFERRED (count) |
-| Use cases (`*usecase*.dart`) | ~100 files | `lib/core/usecases/usecase.dart` (base); `lib/features/options/domain/usecases/option_chain_usecase.dart`; `lib/core/bridge/usecases/pml_preference_usecase.dart` | VERIFIED (samples) |
+| Repository contracts + impls | **64 contracts + 46 impls = 110** | `OptionChainRepository` / `…Impl`; `PMLBridgeRepository` / `…Impl` (`lib/core/bridge/{domain,data}/repositories/`) | VERIFIED (counts re-derived — see §8 commands) |
+| Use cases (`*usecase*.dart`) | **125 files** | `lib/core/usecases/usecase.dart` (base); `lib/features/options/domain/usecases/option_chain_usecase.dart`; `lib/core/bridge/usecases/pml_preference_usecase.dart` | VERIFIED (count re-derived) |
 | Firebase services | 4 + manager | `FirebaseAnalyticsService`, `FirebaseCrashlyticsService`, `FirebasePerformanceService`, `FirebaseRemoteConfigService` (`lib/core/firebase/`) | VERIFIED |
 | Network services | 3 core | `ApiManager`, `HttpApiClient`, `NetworkLogger` (`lib/core/network/`) | VERIFIED |
 | Socket services | 4 | `SocketClient`, `MarketSocketClient`, `OrderSocketClient`, `NativeSocketManager` (`lib/core/socket/`) | VERIFIED |
 
 + many more repositories/use-cases per feature — see `lib/features/*/{data,domain}/`.
 
-### Models / Entities / DTOs (~136 `*_model/_entity/_dto`, ~48 `@JsonSerializable`, ~24 `.g.dart`)
+### Models / Entities / DTOs (**227** `*model*.dart` files — re-derived; earlier "~136" was a ~40% undercount)
 
 | Name | File | Status |
 |---|---|---|
@@ -402,12 +418,12 @@ A copy-aligned, low-blast-radius change: add a new **read-only route** for an ex
 |---|---|---|
 | Stack at a glance | VERIFIED | All from manifests/source read directly |
 | Architecture pattern + layers | VERIFIED | Folders + abstract/impl pair read |
-| Layer violations | VERIFIED (expert_picks) / INFERRED (orderpad) | One read directly, one sampled |
+| Layer violations | **VERIFIED (systemic, 296 files)** | Re-derived by command, no longer sampled |
 | Folder/module inventory | VERIFIED (dirs) | Feature purposes partly INFERRED from names + README |
 | External deps | VERIFIED | `pubspec.yaml` read |
 | Module graph edges | VERIFIED | From imports + pubspec |
 | Design patterns | VERIFIED (samples) | Each example path confirmed |
-| Artifact inventory counts | INFERRED | Counts from naming sweeps; representatives VERIFIED |
+| Artifact inventory counts | **VERIFIED (re-derived @ 1a35bda75)** | Each count ships its exact command in §8 |
 | Infrastructure | VERIFIED | Network/socket/bridge/firebase files confirmed |
 | Route map | VERIFIED (mechanism + samples) / INFERRED (~46 count) | |
 | Static analysis | INFERRED / candidate | No codegraph; sampling only |
@@ -426,7 +442,26 @@ A copy-aligned, low-blast-radius change: add a new **read-only route** for an ex
 **Open questions / NOT FOUND / to confirm:**
 - `socket_io_client` declared but `web_socket_channel` is the active socket lib — dead-dependency **candidate**.
 - README's "Dio" claim contradicts code (`http`) — doc drift, not a bug.
-- Exact total route count (~46) and exact repository/use-case/model counts are **INFERRED** from naming sweeps, not enumerated 1:1.
+- Repository/use-case/model/ViewModel counts are now **VERIFIED** (re-derived @ `1a35bda75` with the commands in §8); the exact total route count (~46) remains the one INFERRED figure.
 - No BLoC/Cubit, no Flutter-side DB, **no server endpoints** — confirmed absent (NOT FOUND, expected for a client module).
-- `orderpad` view model layer-violation is INFERRED (sampled) — confirm by reading the file if it matters.
+- The layer-violation is now **VERIFIED as systemic (296 presentation files)**, not a single sampled file.
 - Full business-flow sequence diagrams (Phase 9) and deep route/contract map (B2) were intentionally out of scope for standard mode.
+
+---
+
+## 17. Reproducibility & Known Weaknesses (added in the verification pass)
+
+**How to refresh this document:** every count in §8 and the layer-violation scope in §4 ships the exact shell command that produced it, anchored to commit `1a35bda75`. After a `git pull` in `pml-flutter`, re-run those commands and update the numbers; if the new HEAD differs, bump the "Analyzed commit" header. This converts the inventory from a static snapshot into a reproducible one.
+
+**Weaknesses that still cap this artifact (stated honestly):**
+
+| # | Weakness | Severity | Status |
+|---|---|---|---|
+| 1 | **Original counts were materially wrong** (models −40%, providers −58%, ViewModels −45%) — naming-sweep estimates, not executed. | High | **Fixed** — replaced with command-derived counts + a "was vs now" column. |
+| 2 | **Layer violation was sampled, not proven.** | High | **Fixed** — now command-derived and quantified at 296 files. |
+| 3 | **No analyzed-repo commit anchor** → silent staleness. | Medium | **Fixed** — header now pins `1a35bda75` + a refresh recipe. |
+| 4 | **Route count (~46) still inferred**, not enumerated. | Low | **Open** — needs a route-registry walk (overlaps B2). |
+| 5 | **Feature-folder *purposes* partly inferred from names** (e.g. `mock-market-socket/`). | Low | **Open** — would need to read each feature's entrypoint. |
+| 6 | **Counts are file-level, not symbol-level** — one file may hold >1 ViewModel, so file counts ≈ lower bound on classes. | Low | **Documented** — counts are stated as *files*, not class instances. |
+
+> Net effect of this pass: the document moved from "honest but largely inferred" to "honest and reproducible," with its two headline claims (counts, layer violation) now executed rather than estimated.

@@ -1,11 +1,11 @@
 {
   "name": "transaction-tracker-api",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Lightweight transaction tracking REST API (B5 Node.js greenfield build).",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "test": "jest --runInBand"
+    "test": "jest --runInBand --coverage"
   },
   "dependencies": {
     "express": "^4.19.2"
@@ -13,6 +13,20 @@
   "devDependencies": {
     "jest": "^29.7.0",
     "supertest": "^7.0.0"
+  },
+  "jest": {
+    "collectCoverageFrom": [
+      "src/**/*.js",
+      "!src/server.js"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "branches": 80,
+        "functions": 90,
+        "lines": 90,
+        "statements": 90
+      }
+    }
   },
   "license": "MIT"
 }

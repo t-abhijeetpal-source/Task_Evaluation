@@ -72,4 +72,77 @@ describe('Transaction Tracker API', () => {
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
   });
+
+  // --- Money correctness: float traps that `> 0` alone lets through --------
+  test('rejects sub-cent precision (9.999) with 422', async () => {
+    const res = await request(app).post('/transactions').send({ amount: 9.999, type: 'credit' });
+    expect(res.status).toBe(422);
+    expect(res.body.errors).toEqual(
+      expect.arrayContaining([expect.stringMatching(/at most 2 decimal places/)])
+    );
+  });
+
+  test('rejects amount over the configured max with 422', async () => {
+    const res = await request(app)
+      .post('/transactions')
+      .send({ amount: 1_000_000_001, type: 'credit' });
+    expect(res.status).toBe(422);
+    expect(res.body.errors).toEqual(
+      expect.arrayContaining([expect.stringMatching(/must not exceed/)])
+    );
+  });
+
+  test('balance is exact — 0.1 + 0.2 === 0.3 (no float drift)', async () => {
+    await request(app).post('/transactions').send({ amount: 0.1, type: 'credit' });
+    await request(app).post('/transactions').send({ amount: 0.2, type: 'credit' });
+    const res = await request(app).get('/balance');
+    expect(res.body).toEqual({ balance: 0.3 });
+  });
+
+  test('balance with mixed decimals is exact', async () => {
+    await request(app).post('/transactions').send({ amount: 100.1, type: 'credit' });
+    await request(app).post('/transactions').send({ amount: 0.05, type: 'debit' });
+    await request(app).post('/transactions').send({ amount: 0.05, type: 'debit' });
+    const res = await request(app).get('/balance');
+    expect(res.body).toEqual({ balance: 100 });
+  });
+
+  test('rejects an over-long description with 422', async () => {
+    const res = await request(app)
+      .post('/transactions')
+      .send({ amount: 5, type: 'credit', description: 'x'.repeat(501) });
+    expect(res.status).toBe(422);
+  });
+
+  test('rejects a non-object body with 422', async () => {
+    const res = await request(app)
+      .post('/transactions')
+      .set('Content-Type', 'application/json')
+      .send('[1,2,3]');
+    expect(res.status).toBe(422);
+  });
+
+  // --- Observability: health version + request-id correlation -------------
+  test('health reports service + version', async () => {
+    const res = await request(app).get('/health');
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ status: 'ok' });
+    expect(res.body).toHaveProperty('version');
+  });
+
+  test('assigns a request id when none supplied', async () => {
+    const res = await request(app).get('/health');
+    expect(res.headers['x-request-id']).toBeTruthy();
+  });
+
+  test('preserves a supplied request id', async () => {
+    const res = await request(app).get('/health').set('x-request-id', 'trace-123');
+    expect(res.headers['x-request-id']).toBe('trace-123');
+  });
+
+  test('unknown route returns 404 envelope', async () => {
+    const res = await request(app).get('/does-not-exist');
+    expect(res.status).toBe(404);
+    expect(res.body).toHaveProperty('error');
+  });
 });

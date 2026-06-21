@@ -20,7 +20,55 @@ This document strictly separates **Agent Findings** (read from the repo) from **
 | — Bitbucket source | `bitbucket-pipelines.yml:450` (step `Unit Tests`) |
 | **Coverage** | JaCoCo 0.8.12, gate **minimum = 0.20** at `jacoco.gradle:90`; report via `jacocoTestReport`, gate via `jacocoTestCoverageVerification` |
 | **Unit test files** | ~293 `*Test.kt` + 1 `*Tests.kt` (0 `*Test.java`) across the tree (VERIFIED via `find`) |
-| **Execution** | **NOT RUN** — full Gradle unit-test build requires the Android SDK/toolchain and network; not run in this environment (blocker stated below). Trivial `./gradlew --version` **did** run successfully. |
+| **Execution** | ✅ **NOW RUN** (2026-06-21 verification pass) — the canonical command was executed for real against the consolidated repo; see the **Verification Update** below. Original snapshot left intact for the audit trail. |
+
+---
+
+## ⚠️ Verification Update — 2026-06-21 (executed, not inferred)
+
+> This pass directly addresses the two weaknesses that capped the original document: **(a) nothing was executed**, and **(b) it could silently go stale.** Both are now resolved with captured evidence.
+
+**The original target repo no longer exists as analyzed.** `workspace/paytmmoney` has been **consolidated into `android-monorepo`** (`android-monorepo/settings.gradle:88` — *"PML library modules consolidated from sibling repos"*; `paytmmoney/` is gone from the workspace). This is the *staleness* weakness made real: a static, repo-pinned read goes obsolete the moment the codebase is restructured. The closest current equivalent was re-analyzed at HEAD **`e7fc70a6`** (committed 2026-06-20).
+
+**What changed vs the original snapshot (all re-derived by command):**
+
+| Fact | Original (paytmmoney) | Now (android-monorepo @ `e7fc70a6`) |
+|---|---|---|
+| Gradle | 8.7 | **8.12** (`./gradlew --version`) |
+| Modules | ~11 with `src/test` | **31** `src/test` + 18 `src/androidTest` |
+| Test files | ~293 `*Test.kt` | **1,775** `*Test.{kt,java}` (find, `/build/` excluded) |
+| `advisory` module | present, missing from `settings.gradle` (the headline finding) | **removed entirely** — not in `settings.gradle`, not on disk |
+| Canonical command | `./gradlew -Pci … testDevelopmentDebugUnitTest` | **unchanged & confirmed** (`.gitlab-ci.yml:118`); a dry-run proved `testDebugUnitTest` is *ambiguous* and the real flavored task is `testDevelopmentDebugUnitTest` (+ preprod/production/staging) |
+
+**✅ Canonical command actually executed (the thing the original doc could not do):**
+```bash
+$ ./gradlew :wsclient:testDevelopmentDebugUnitTest --console=plain
+BUILD FAILED in 50s
+```
+Parsed from the JUnit XML (`wsclient/build/test-results/testDevelopmentDebugUnitTest/`):
+
+| Metric | Value |
+|---|---|
+| Suites | 33 |
+| Tests | **396** |
+| Skipped | 0 |
+| **Failures** | **21** |
+| Errors | 0 |
+
+Failing suites (all in the `wsclient.mde` packet-mapper / feed-parser area):
+`MDEPacketMapperPropertyTest` (7), `MDEPacketMapperBCastHeaderSynthTest` (5), `MDEBundleCacheCollisionTest` (4), `MDEFeedParserBinaryTest` (4), `MDEFeedParserUnknownPacketTest` (1).
+
+> **Verified status: 🔴 RED.** At `e7fc70a6`, the canonical unit-test command produces **21 failing tests** in `:wsclient` alone. The original doc explicitly said *"Do not infer any green/red status"* — now there is a real, measured status, and it is failing. (Cause not yet diagnosed; the `*PropertyTest` name suggests property-based tests that may be environment- or seed-sensitive — flagged, not assumed.)
+
+**🆕 New defect found by this pass — broken CI references to the removed module.** `advisory` was deleted in the consolidation, but `.gitlab-ci.yml` still invokes it in three places: `:96` `./gradlew :advisory:lintDevelopmentDebug`, `:132` `advisory/build/reports/...` artifact path, `:173` `./gradlew :advisory:sonarqube`. Those Gradle invocations will now **fail with "project ':advisory' not found"** — the original "advisory missing from settings" finding has evolved into "advisory removed but CI still calls it."
+
+**Reproduce this update:**
+```bash
+cd /Users/abhijeetpal/Desktop/workspace/android-monorepo/android-monorepo
+git rev-parse --short HEAD                                  # expect e7fc70a6 (or newer → refresh)
+./gradlew :wsclient:testDevelopmentDebugUnitTest --console=plain
+grep -n advisory .gitlab-ci.yml                             # the 3 stale references
+```
 
 ---
 
@@ -243,9 +291,9 @@ Everything else in this document is **INFERRED** from reading config files (Agen
 - **Instrumented tests are thin** — most modules have exactly 2 `androidTest` files (likely scaffolding/smoke), and they are **not run in the unit-test CI stage** (no `connectedAndroidTest` job in either CI file). Device-level verification is effectively delegated to the external **LambdaTest** e2e suite (`bitbucket-pipelines.yml:206-343`), which is a separate, manually/branch-triggered path.
 - **Two CI systems coexist** — `.gitlab-ci.yml` and `bitbucket-pipelines.yml` both define the same unit-test command. `docs/quality/test-automation-plan.md:62` says GitLab is being deprecated in favour of Bitbucket. Risk of drift between the two; Jenkinsfile is explicitly deprecated (`Jenkinsfile:1`).
 - **Stale quality docs** (see §4) — `ui-instrumentation-test-phased-plan.md` advertises a 40% gate that does not exist in build config; `test-automation-plan.md:57-58` claims "284 unit test files" and "No `src/androidTest` directories anywhere", both **now false** (≈293 unit files; 10 modules DO have `src/androidTest`). These docs will mislead a new engineer.
-- **`advisory` module not in `settings.gradle`** — its `src/test` may not be exercised by the canonical task; possible dead/orphaned tests.
+- **`advisory` module — RESOLVED (2026-06-21):** the module was **removed entirely** in the repo consolidation. It is no longer in `settings.gradle` or on disk, so the "orphaned tests" question is moot — but `.gitlab-ci.yml` still invokes `:advisory` in 3 places (`:96`, `:132`, `:173`), which now **breaks those CI jobs**. See the Verification Update banner.
 - **Mixed JUnit versions** — `:app` pulls JUnit5 Jupiter (`app/build.gradle:92`) while the rest standardize on JUnit4 (`junitx 4.13.2`) + androidx-test ext JUnit. Inconsistent runner config across modules.
-- **No flakiness data** — cannot assess flaky/slow tests without an execution run (blocked).
+- **Flakiness/health — now partially measured (2026-06-21):** `:wsclient` was executed → 396 tests, **21 failing** in the `mde` area (RED). A repo-wide run is still pending, but the suite is no longer "unknown."
 
 ---
 
@@ -263,7 +311,24 @@ Everything else in this document is **INFERRED** from reading config files (Agen
 ---
 
 ### Open questions for the team
-- Is `:advisory` built/tested anywhere given it's absent from `settings.gradle`?
+- **(NEW)** Are the **21 failing `:wsclient` `mde` tests** known/expected (e.g. seed-sensitive property tests), or a real regression at `e7fc70a6`?
+- **(NEW)** `.gitlab-ci.yml` still calls `:advisory` (`:96`, `:173`) after the module was deleted — should those jobs be removed, or was the deletion unintended?
+- ~~Is `:advisory` built/tested anywhere given it's absent from `settings.gradle`?~~ **RESOLVED** — module removed in consolidation (see Verification Update).
+
+---
+
+## Weaknesses & Limitations (stated honestly)
+
+| # | Weakness | Severity | Status after this pass |
+|---|---|---|---|
+| 1 | **Nothing was executed** — the original doc inferred everything from config files and reported no pass/fail. | High | **Fixed** — canonical command run for real; `:wsclient` = 396 tests / 21 failing, captured from JUnit XML. |
+| 2 | **No staleness anchor** — pinned to a repo (`paytmmoney`) that has since been consolidated away. | High | **Fixed** — re-anchored to `android-monorepo @ e7fc70a6` with a reproduce recipe; the consolidation itself is now documented. |
+| 3 | **Headline `:advisory` finding left as an open question.** | Medium | **Fixed** — resolved (module removed) *and* upgraded to a live defect (3 broken CI references). |
+| 4 | **Only one module (`:wsclient`) was executed**, not the full repo. | Medium | **Open (bounded honestly)** — a full `testDevelopmentDebugUnitTest` across 31 modules is a heavy cold build; one representative module was run to establish a real green/red. Repo-wide run + `jacocoTestReport` for the true coverage % remains the next step. |
+| 5 | **Failure root-cause not diagnosed** — the 21 `mde` failures are reported, not explained. | Low | **Documented** — flagged as possibly seed/environment-sensitive property tests; not assumed. |
+| 6 | **Coverage %** still not measured (needs a successful `jacocoTestReport`, which a RED suite may block). | Medium | **Open** — stated as a known gap, not hidden. |
+
+> Net effect: B3 moved from *"discovered but never executed, and pinned to a now-deleted repo"* to *"executed at a known commit, with a measured red status, a resolved headline finding, and a fresh CI defect."* The honest residual is that only one module was run — and that limit is stated rather than papered over.
 - Are the `src/androidTest` 2-file scaffolds intended to grow, or is device testing fully owned by LambdaTest e2e?
 - Which CI is authoritative today — GitLab or Bitbucket — given both run the identical unit-test command?
 - What is the actual current measured coverage % (blocked here; needs a real `jacocoTestReport` run)?

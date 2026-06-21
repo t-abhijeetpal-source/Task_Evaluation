@@ -45,6 +45,17 @@ impl LogCounts {
             LogLevel::Error => self.error += 1,
         }
     }
+
+    /// Render as a compact, machine-parseable JSON object (no deps).
+    ///
+    /// Counts are integers, so manual formatting is safe — there are no strings
+    /// to escape.
+    pub fn to_json(&self) -> String {
+        format!(
+            "{{\"info\":{},\"warn\":{},\"error\":{}}}",
+            self.info, self.warn, self.error
+        )
+    }
 }
 
 impl fmt::Display for LogCounts {
