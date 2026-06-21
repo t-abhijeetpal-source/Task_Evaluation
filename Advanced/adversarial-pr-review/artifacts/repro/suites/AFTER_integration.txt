@@ -1,0 +1,10 @@
+== starting FastAPI on :8078 (fresh DB + queue) ==
+== POST 4 canonical transactions ==
+queued files: 4
+== run Node worker (--once): consumes queue, calls Rust, posts score back ==
+== GET each transaction and assert score (expected per CONTRACT.md) ==
+  txn_base     score=0 risk=low status=scored  expect=0/low  PASS
+  txn_high     score=40 risk=medium status=scored  expect=40/medium  PASS
+  txn_foreign  score=20 risk=low status=scored  expect=20/low  PASS
+  txn_all      score=90 risk=high status=scored  expect=90/high  PASS
+INTEGRATION: PASS

@@ -1,0 +1,11 @@
+# A5-18 — Integration harness broken (BEFORE)
+# Command:
+#   bash polyglot-fraud-system/integration-tests/run_integration.sh ; echo "exit=$?"
+# Root cause: lines 14,15,25,52 reference $polyglot-fraud-system, but the
+# component root variable is named $A3. Under `set -u`, the bare token
+# $polyglot expands as an UNBOUND variable and the script aborts before any
+# component starts. The end-to-end path is therefore NEVER exercised.
+
+$ bash polyglot-fraud-system/integration-tests/run_integration.sh
+integration-tests/run_integration.sh: line 14: polyglot: unbound variable
+exit=1

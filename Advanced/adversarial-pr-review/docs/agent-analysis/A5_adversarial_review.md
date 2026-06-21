@@ -1,211 +1,256 @@
-# A5 — Adversarial Code Review: A3 Polyglot Fraud-Score System
+# A5 — Adversarial Code Review & Remediation: A3 Polyglot Fraud-Score System
 
-> Principal-engineer adversarial review of the agent-generated A3 PR (FastAPI ingestion + Node
-> worker + Rust engine). **Posture: assume the implementation is wrong until proven correct.**
-> Goal: prevent production incidents. Date: 2026-06-17.
-> Reviewed: diff/source (`fastapi-service/`, `node-worker/`, `rust-engine/`), tests, runtime behavior.
-> The three highest-severity findings were **reproduced live** (evidence below) — not theorized.
+> Principal-engineer / red-team review of the A3 PR (FastAPI ingestion + Node worker + Rust
+> engine) **and** the close-out of every blocking defect.
+> **Posture: every line is guilty until an exploit is reproduced or safety is proven by a test.**
+> Date: **2026-06-21** (supersedes the 2026-06-17 v1 review).
+> Scope: `fastapi-service/`, `node-worker/`, `rust-engine/`, `integration-tests/`, `CONTRACT.md`.
+>
+> **All Critical + High findings were reproduced live** (`artifacts/repro/`), fixed, and re-verified
+> by re-running the *original* exploit against the patched code. Suites: Rust 7/7, pytest 18/18,
+> Node 14/14, integration **4/4 PASS (exit 0)**.
+
+---
+
+## ⚠️ Correction to the v1 (2026-06-17) review
+
+The v1 review claimed *"the 3 blocking issues were subsequently fixed in A3 and regression-tested …
+end-to-end integration still 4/4 PASS."* An adversarial re-audit found that claim was **false on two
+counts** — exactly the kind of overstated remediation this upgrade exists to eliminate:
+
+| v1 claim | Reality on 2026-06-21 (reproduced) | Now |
+|---|---|---|
+| A5-2 "fixed: optional `X-Internal-Token`" | **Fail-OPEN** — with `A3_INTERNAL_TOKEN` unset (the default), `/internal/*` accepted *any* caller. Reproduced: forged `score=0/low` on a 999999/US/gambling txn → **HTTP 200**. | **Fail-CLOSED** in all environments (`AFTER_failclosed_default_config.txt`). |
+| "end-to-end integration still 4/4 PASS" | **Broken** — `run_integration.sh` referenced `$polyglot-fraud-system`, an unbound variable under `set -u`; the script aborted on line 14 (`exit 1`) before starting anything. The E2E path was never exercised. | **4/4 PASS, exit 0** (`suites/AFTER_integration.txt`). |
+
+The "optional token" design is itself the vulnerability (see **A5-17**): a security control that is
+off by default is no control at all.
 
 ---
 
 ## Executive Summary
 
-The A3 system is functionally correct on the happy path (its own suites are green), but adversarial
-review found **3 blocking defects** — including a **Critical arbitrary-file-write (path traversal)**
-that is trivially exploitable from an unauthenticated request, an **unauthenticated internal scoring
-endpoint that lets anyone neutralize fraud scores**, and an **unhandled duplicate-ID crash (HTTP
-500)**. All three were reproduced. Beyond these, money is stored as floating point, the DB-write /
-enqueue step is non-atomic, and the worker has no engine timeout, no queue-claim (double-processing
-under concurrency), and silently dead-letters transactions on transient API outages. **Recommendation:
-do not ship until the 3 blocking issues are fixed.**
+The A3 system is correct on the happy path (its own suites were green), but adversarial review found
+**20 distinct issues across 8 attack categories**, including a **Critical arbitrary-file-write** and a
+cluster of **score-integrity** defects that let an attacker neutralize the entire fraud system. This
+deliverable closes the loop: **8 blocking issues fixed and re-verified, 0 open blocking issues**, plus
+the High/Medium backlog either fixed-with-tests or explicitly deferred-with-tests.
 
-| Severity | Count |
-|---|---|
-| Critical | 1 |
-| High | 3 |
-| Medium | 5 |
-| Low | 3 |
+| Severity | Count | Blocking | Status |
+|---|---|---|---|
+| Critical | 1 | 1 | ✅ fixed + verified |
+| High | 8 | 7 | ✅ fixed + verified (1 deferred: A5-4) |
+| Medium | 8 | 0 | 4 fixed / 4 deferred-with-rationale |
+| Low | 3 | 0 | 1 fixed / 2 deferred |
+| **Total** | **20** | **8** | **0 open blocking** |
+
+**Recommendation:** the 8 blocking defects are fixed and each original exploit now fails. Ship-able
+once the deferred backlog (esp. A5-4 money type) is scheduled.
+
+---
+
+## Attack categories covered
+
+1. **Injection / path traversal** — A5-1
+2. **AuthN / AuthZ** — A5-2, A5-17, A5-19
+3. **Input validation** — A5-9, A5-15
+4. **Business-logic / score integrity** — A5-13, A5-14
+5. **Concurrency / races** — A5-6, A5-16
+6. **Reliability / error handling** — A5-3, A5-5, A5-7, A5-8, A5-10, A5-11
+7. **Financial correctness** — A5-4
+8. **Contract fidelity / tooling** — A5-18, A5-20, A5-12
 
 ---
 
 ## Issue Inventory
 
-### A5-1 — Path traversal / arbitrary file write via `transaction_id` 🔴
-* **Dimension:** Security / Correctness
-* **Description:** The queue filename is built directly from the client-supplied `transaction_id`
-  with no sanitization, so a `transaction_id` containing `../` writes the queue file **outside** the
-  queue directory — arbitrary file write within the process's permissions (overwrite configs, plant
-  files, fill disks).
-* **Evidence (File Path):** `fastapi-service/app/queue.py:16`
-  ```python
-  path = os.path.join(queue_dir, f"{txn['transaction_id']}.json")  # transaction_id is client-controlled, unsanitized
-  ```
-  `fastapi-service/app/schemas.py` — `TransactionIn.transaction_id: str` has **no format/length constraint**.
-  **Reproduced:**
-  ```text
-  POST /transactions {"transaction_id":"../A5_PWNED", ...}   -> 201
-  $ ls /tmp/a5_repro/queue        -> (empty)
-  $ ls /tmp/a5_repro/A5_PWNED.json -> -rw-r--r-- ... A5_PWNED.json   # ESCAPED the queue dir
-  ```
-* **Severity:** **Critical** · **Blocking**
-* **Suggested Fix:** Validate `transaction_id` against a strict allowlist (e.g. `^[A-Za-z0-9_-]{1,64}$`)
-  in `TransactionIn` (Pydantic `pattern=`), AND defensively use only the basename + assert the
-  resolved path stays within `queue_dir` (`os.path.realpath(path).startswith(os.path.realpath(queue_dir))`).
-* **Verification Method:** Re-run the POST with `"../A5_PWNED"` → expect **422** (rejected) and no
-  file outside `queue/`; add a regression test asserting traversal IDs are rejected.
+Legend: 🔴 Critical · 🟠 High · 🟡 Medium · 🔵 Low · **[B]** blocking · **[NEW]** not in v1.
 
-### A5-2 — Unauthenticated internal scoring endpoint (fraud bypass) 🟠
-* **Dimension:** Security / API Design
-* **Description:** `POST /internal/transactions/{id}/score` persists an arbitrary score/risk with **no
-  authentication** and is mounted on the same public app. Any client can overwrite a high-risk score
-  with `low`, defeating the entire fraud system.
-* **Evidence (File Path):** `fastapi-service/app/routes.py:95-109` (no auth dependency; same router as public routes).
-  **Reproduced:** a `amount=999999, country=US, merchant=gambling` txn forced to `score=0, risk=low`:
-  ```text
-  POST /internal/transactions/victim1/score {"score":0,"risk_level":"low",...} -> {"ok":true}
-  GET /transactions/victim1 -> stored score: 0  risk: low
-  ```
-* **Severity:** **High** · **Blocking**
-* **Suggested Fix:** Require a shared-secret/mTLS/internal-network auth on `/internal/*` (e.g. a
-  `X-Internal-Token` header validated against an env secret), or move the callback to a private
-  network/queue not exposed publicly.
-* **Verification Method:** POST to `/internal/...` without the token → expect **401/403**; with the
-  token → 200. Add an auth test.
+### A5-1 — Path traversal / arbitrary file write via `transaction_id` 🔴 **[B]** ✅ FIXED
+* **Category:** Injection. **File:** `fastapi-service/app/queue.py`, `app/schemas.py`.
+* **Exploit:** queue filename built from the client-supplied `transaction_id`; `"../A5_PWNED"` writes
+  outside `QUEUE_DIR` → arbitrary file write.
+* **Repro (before, v1):** `POST {"transaction_id":"../A5_PWNED"}` → 201, file at `…/A5_PWNED.json` outside `queue/`.
+* **Fix:** strict `pattern=^[A-Za-z0-9_-]{1,64}$` on `TransactionIn.transaction_id` + basename + realpath
+  containment assert in `enqueue()`. **Verified:** `artifacts/repro/AFTER_api_exploits.txt` → traversal id
+  **422**, nothing escapes. Test `test_path_traversal_transaction_id_rejected`.
 
-### A5-3 — Duplicate `transaction_id` → unhandled `IntegrityError` (HTTP 500) 🟠
-* **Dimension:** Error Handling / Correctness
-* **Description:** Re-POSTing an existing `transaction_id` violates the primary key; the
-  `IntegrityError` from `db.commit()` is uncaught → HTTP 500 (and leaves the session in a bad state).
-  No idempotency, no 409.
-* **Evidence (File Path):** `fastapi-service/app/routes.py:43-57` (`db.add(txn); db.commit()` with PK = `transaction_id`, no existence check / try-except).
-  **Reproduced:** `first POST: 201`, `second POST: 500`.
-* **Severity:** **High** · **Blocking** (retries/at-least-once delivery upstream will routinely resend IDs → 500 storms).
-* **Suggested Fix:** Treat as idempotent — check `db.get(Transaction, id)` first and return 200/conflict,
-  or catch `IntegrityError`, `db.rollback()`, and return 409. Add a unique-violation handler.
-* **Verification Method:** POST same ID twice → expect 200/409 (not 500); regression test.
+### A5-2 — Unauthenticated internal scoring endpoint (fraud bypass) 🟠 **[B]** ✅ FIXED
+* **Category:** AuthZ. **File:** `fastapi-service/app/routes.py`.
+* **Exploit:** `POST /internal/transactions/{id}/score` persisted an arbitrary score with no auth; any
+  client could overwrite a high-risk score with `low`, defeating the fraud system.
+* **Repro (before):** no `X-Internal-Token` → **HTTP 200**, victim forced to `score 0 / low`
+  (`BEFORE_api_exploits.txt`).
+* **Fix:** `_check_internal_auth()` requires a configured token and a matching `X-Internal-Token`.
+  **Verified:** no/wrong token → **401**; correct token → 200. Tests `test_internal_score_requires_token`.
+* See **A5-17** for the deeper fail-open root cause that v1 left open.
 
-### A5-4 — Money stored as floating point 🟠
-* **Dimension:** Correctness (financial)
-* **Description:** `amount` is a `float`/SQL `REAL` end to end. Floating point is lossy for currency
-  (`0.1+0.2`), causing wrong totals/threshold edge behavior in a *financial fraud* system.
-* **Evidence (File Path):** `fastapi-service/app/models.py` (`amount = Column(Float)`),
-  `fastapi-service/app/schemas.py` (`amount: float`), Rust `amount: f64`.
-* **Severity:** **High** · Non-blocking (works for the demo thresholds) but must fix before real money.
-* **Suggested Fix:** Use integer **minor units** (paise/cents) or `Decimal`/`NUMERIC`; keep the engine on integers.
-* **Verification Method:** Test `amount=0.1` summed 3× equals `0.3` exactly; threshold test at `10000.00`.
+### A5-3 — Duplicate `transaction_id` → unhandled `IntegrityError` (HTTP 500) 🟠 **[B]** ✅ FIXED
+* **Category:** Error handling. **File:** `app/routes.py`.
+* **Exploit:** re-POST of an existing id violated the PK → uncaught `IntegrityError` → 500.
+* **Fix:** idempotent pre-check returns **409**; *and* the commit is wrapped to catch the PK violation
+  (see **A5-16** for the TOCTOU hardening). Test `test_duplicate_transaction_id_returns_409`.
 
-### A5-5 — Non-atomic DB-commit-then-enqueue (lost/stuck work) 🟡
-* **Dimension:** Correctness / Reliability
-* **Description:** The row is committed `status=pending` (`routes.py:57`) **then** the queue file is
-  written (`routes.py:59`). If enqueue fails (bad path, disk full, crash between the two), the txn is
-  permanently `pending` and never scored, with no reconciliation.
-* **Evidence (File Path):** `fastapi-service/app/routes.py:56-69`.
-* **Severity:** **Medium** · Non-blocking.
-* **Suggested Fix:** Enqueue first (or use an outbox pattern / single transaction), and add a sweeper
-  that re-enqueues `pending` rows older than N seconds.
-* **Verification Method:** Inject an enqueue failure → assert the row isn't left silently pending (or is re-swept).
+### A5-4 — Money stored as floating point 🟠 ⏸️ DEFERRED (with test)
+* **Category:** Financial correctness. **File:** `app/models.py` (`Float`), `app/schemas.py` (`float`), Rust `f64`.
+* **Risk:** `0.1+0.2`-style drift; threshold edge behavior in a financial system.
+* **Decision — DEFERRED:** a correct fix is integer **minor units** / `Decimal` end-to-end across three
+  languages, which changes the **LOCKED** contract (`amount: number`) and the Rust engine's `f64`
+  threshold. That is a contract-version bump (v1.1), not an in-place patch, so it is scheduled rather
+  than rushed. **Guarded by a test** pinning the exact boundary the migration must preserve:
+  `rust-engine/tests/scoring.rs::high_amount_threshold_boundary` (10000 → no `high_amount`; 10000.01 → fires).
+* **Verification:** `cargo test` (7/7). Non-blocking: demo thresholds are integers.
 
-### A5-6 — Worker has no queue claim → double-processing under concurrency 🟡
-* **Dimension:** Concurrency
-* **Description:** `processQueueOnce` lists all `*.json` and processes them; the only "claim" is the
-  move to `processed/` **after** scoring. Two worker instances (loop mode / horizontal scale) will
-  both pick up the same file → duplicate engine calls and duplicate score POSTs.
-* **Evidence (File Path):** `node-worker/src/worker.js:319-353` (no lock/rename-to-claim before work).
-* **Severity:** **Medium** · Non-blocking (single worker today).
-* **Suggested Fix:** Atomically claim each file first (`rename` to a `processing/` dir owned by the worker; the loser's rename fails) before scoring.
-* **Verification Method:** Run two workers against one file → exactly one POST; assert via a mock API call count.
+### A5-5 — Non-atomic DB-commit-then-enqueue (lost/stuck work) 🟡 ⏸️ DEFERRED
+* **Category:** Reliability. **File:** `app/routes.py`.
+* **Risk:** row committed `pending`, then queue file written; a crash between leaves a permanently
+  `pending`, never-scored txn with no reconciliation.
+* **Decision — DEFERRED:** correct fix is an outbox/sweeper. Documented; non-blocking for single-node
+  demo. Mitigation note: `enqueue()` raising now leaves a 500 to the client (visible failure) rather
+  than a silent success, so the gap is observable.
 
-### A5-7 — `callEngine` has no timeout (hung engine stalls the worker) 🟡
-* **Dimension:** Reliability / Performance
-* **Description:** `callEngine` resolves only on the child's `close`; a hung/never-exiting engine
-  leaves the Promise pending forever, blocking the (sequential) queue loop indefinitely.
-* **Evidence (File Path):** `node-worker/src/worker.js:77-151` (no `setTimeout`/`child.kill`).
-* **Severity:** **Medium** · Non-blocking.
-* **Suggested Fix:** Add a timeout that `child.kill()`s and rejects after N seconds.
-* **Verification Method:** Mock a spawn that never closes → assert rejection after the timeout.
+### A5-6 — Worker has no queue claim → double-processing under concurrency 🟡 ⏸️ DEFERRED (mitigated)
+* **Category:** Concurrency. **File:** `node-worker/src/worker.js` (`processQueueOnce`).
+* **Risk:** two workers list+process the same file → duplicate engine calls + duplicate score POSTs.
+* **Decision — DEFERRED but MITIGATED:** the data-corruption consequence (a duplicate POST overwriting
+  a score) is now neutralized server-side by **A5-14** — a second, conflicting score is a 409 and an
+  identical one is an idempotent no-op. The remaining duplicate *work* (wasted engine spawn) is a
+  single-worker-today efficiency issue. Atomic `rename`-to-claim is the scheduled fix.
 
-### A5-8 — Transient failures are silently dead-lettered, never retried 🟡
-* **Dimension:** Reliability / Observability
-* **Description:** On engine-exhaustion or `postScore` failure, the file is moved to `failed/`
-  (`worker.js:257,277`) and never reprocessed. A brief API outage permanently fails every in-flight
-  txn, with no alerting and no redrive.
-* **Evidence (File Path):** `node-worker/src/worker.js:251-279`.
-* **Severity:** **Medium** · Non-blocking.
-* **Suggested Fix:** Distinguish retryable (5xx/network) from permanent errors; redrive `failed/` on a
-  schedule; emit a metric/alert on dead-letter.
-* **Verification Method:** Take the API down, process a file, bring it up → assert the txn eventually scores.
+### A5-7 — `callEngine` has no timeout (hung engine stalls the worker) 🟡 ✅ FIXED
+* **Category:** Reliability. **File:** `node-worker/src/worker.js`.
+* **Risk:** a never-closing engine left the Promise pending forever, blocking the sequential loop.
+* **Fix:** `ENGINE_TIMEOUT_MS` (default 5s) `SIGKILL`s the child and rejects. Test
+  `A5-7: rejects (and kills child) when the engine never closes`.
 
-### A5-9 — No input validation limits on transaction fields 🟡
-* **Dimension:** Security / Input validation
-* **Description:** `TransactionIn` constrains nothing — `user_id`, `country`, `merchant_category`,
-  `transaction_id` accept arbitrary length/content (enables A5-1; allows unbounded DB growth, non-ISO countries).
-* **Evidence (File Path):** `fastapi-service/app/schemas.py` (no `max_length`, `pattern`, or `Literal`).
-* **Severity:** **Medium** · Non-blocking.
-* **Suggested Fix:** Add `max_length`, `pattern` (transaction_id), ISO-2 validation for `country`, and a sane `amount` upper bound.
-* **Verification Method:** POST oversized/invalid fields → expect 422.
+### A5-8 — Transient failures silently dead-lettered, never retried 🟡 ⏸️ DEFERRED
+* **Category:** Reliability/Observability. **File:** `worker.js`.
+* **Risk:** a brief API outage permanently moves every in-flight txn to `failed/` with no redrive/alert.
+* **Decision — DEFERRED:** needs a retryable-vs-permanent taxonomy + scheduled redrive + metric. Documented;
+  non-blocking. (The Rust call already retries 3× w/ backoff per contract; only `postScore`/permanent
+  paths dead-letter.)
 
-### A5-10 — Engine stdout parsed unbounded 🔵
-* **Dimension:** Performance / Robustness
-* **Evidence:** `node-worker/src/worker.js:101-103` accumulates `stdout` with no cap; a misbehaving engine could exhaust memory.
-* **Severity:** **Low** · Non-blocking. **Fix:** cap buffered output. **Verify:** feed large output → bounded.
+### A5-9 — Input validation limits on transaction fields 🟡 ✅ FIXED
+* **Category:** Input validation. **File:** `app/schemas.py`.
+* **Fix (carried from A5-1 work):** `transaction_id` pattern; `user_id`/`merchant_category`/`timestamp`
+  `max_length`; `country` `min/max_length`. Bounds storage and blocks the traversal vector. Verified by
+  the path-traversal + happy-path tests. (ISO-2 strict country + amount upper-bound noted as nice-to-have.)
 
-### A5-11 — 500 paths not observable 🔵
-* **Dimension:** Observability
-* **Evidence:** request_id middleware exists, but the uncaught `IntegrityError` (A5-3) emits a stack trace, no structured error log/metric. **Severity:** Low. **Fix:** exception handler emitting structured JSON + a 5xx counter. **Verify:** trigger error → structured log present.
+### A5-10 — Engine stdout parsed unbounded 🔵 ✅ FIXED
+* **Category:** Robustness. **File:** `worker.js`.
+* **Fix:** `MAX_OUTPUT_BYTES` (default 1 MiB) cap; exceeding it kills the child and rejects. Test
+  `A5-10: rejects when engine stdout exceeds the output cap`.
 
-### A5-12 — Dependency drift risk 🔵
-* **Dimension:** Dependency Risk
-* **Evidence:** `node-worker/package.json` `axios ^1.7` (caret); Python `requirements.txt` ranges. Lockfiles exist (`package-lock.json`, `Cargo.lock`) but Python has no hash lock. **Severity:** Low/Nit. **Fix:** hash-pin Python deps. **Verify:** reproducible install.
+### A5-11 — 500 paths not observable 🔵 ⏸️ DEFERRED (reduced)
+* **Category:** Observability. **File:** `app/main.py`.
+* **Status:** the headline 500 source (A5-3/A5-16) is now eliminated, so the unobservable-stack-trace
+  symptom is largely gone. A dedicated structured exception handler + 5xx counter remains a documented
+  nice-to-have. Non-blocking.
 
----
+### A5-12 — Dependency drift risk 🔵 ⏸️ DEFERRED
+* **Category:** Supply chain. **File:** `node-worker/package.json`, `requirements.txt`.
+* **Status:** lockfiles exist (`package-lock.json`, `Cargo.lock`); Python has no hash lock. Documented;
+  non-blocking nit.
 
-## Blocking Issues
-**A5-1 (Critical, path traversal)**, **A5-2 (High, unauth scoring)**, **A5-3 (High, duplicate→500)** — all reproduced; must be fixed before merge.
+### A5-13 — Score poisoning: out-of-range / band-inconsistent scores accepted 🟠 **[B]** ✅ FIXED **[NEW]**
+* **Category:** Business-logic / score integrity. **File:** `app/routes.py`, `app/schemas.py`.
+* **Exploit:** the callback persisted `payload.score` / `payload.risk_level` verbatim — `score=999`,
+  `risk_level="banana"`, or `score=90 / risk_level=low` (band mismatch) were all stored.
+* **Repro (before):** `POST score=999 risk_level=low` → **HTTP 200**, persisted (`BEFORE_api_exploits.txt`).
+* **Fix:** server-side validation — `0 ≤ score ≤ 100` (also enforced at the Pydantic layer, `Field(ge=0,
+  le=100)`), `risk_level ∈ {low,medium,high}`, and `risk_level == band(score)`; any violation → **422**.
+  *Auth (A5-2) is the primary control; this is defense-in-depth against a buggy/compromised worker.*
+  Tests `test_score_poisoning_out_of_range_rejected`, `…_invalid_risk_level_…`, `…_band_mismatch_…`.
 
-## Security Findings
-A5-1 (arbitrary file write), A5-2 (auth bypass / fraud neutralization), A5-9 (input validation), A5-12 (deps). A5-1 + A5-2 are the production-incident risks.
+### A5-14 — Callback overwrite of an already-scored transaction 🟠 **[B]** ✅ FIXED **[NEW]**
+* **Category:** Business-logic / score integrity. **File:** `app/routes.py`.
+* **Exploit:** an already-`scored` txn could be re-scored; a `90/high` decision was silently flipped to
+  `0/low` by a second POST.
+* **Repro (before):** 1st `90/high` → 200, 2nd `0/low` → **200**, GET shows `0/low` (`BEFORE_api_exploits.txt`).
+* **Fix:** idempotent + overwrite-resistant — identical replay → **200 `{idempotent:true}`**; conflicting
+  re-score → **409**, original score preserved. Tests `test_callback_idempotent_replay`,
+  `test_callback_overwrite_rejected`.
 
-## Performance Findings
-A5-7 (hung engine stalls the sequential loop), A5-10 (unbounded stdout), and the throughput ceiling of single-threaded `processQueueOnce` + 2 s poll (latency floor). None are the top risk; correctness/security dominate.
+### A5-15 — Path/body `transaction_id` mismatch silently accepted 🟡 ✅ FIXED **[NEW]**
+* **Category:** Input validation / confused deputy. **File:** `app/routes.py`.
+* **Exploit:** `POST /internal/transactions/realA/score` with body `transaction_id:"totally_different"`
+  was accepted — the body id was ignored, scoring `realA` with mismatched data.
+* **Repro (before):** → **HTTP 200** (`BEFORE_api_exploits.txt`).
+* **Fix:** reject path≠body id with **422**. Test `test_score_path_body_id_mismatch_rejected`.
 
-## Test Coverage Gaps
-The suites cover the happy path and basic validation but **miss every adversarial case**: no path-traversal test (A5-1), no duplicate-ID test (A5-3), no auth test on `/internal` (A5-2), no concurrency/double-processing test (A5-6), no engine-timeout test (A5-7), no dead-letter/redrive test (A5-8), no float-precision test (A5-4).
+### A5-16 — Concurrent duplicate create → TOCTOU `IntegrityError` (HTTP 500) 🟠 **[B]** ✅ FIXED **[NEW]**
+* **Category:** Concurrency / races. **File:** `app/routes.py`.
+* **Exploit:** A5-3's `db.get()` pre-check is a TOCTOU window — two concurrent identical creates both
+  see "not found", race to INSERT, the loser's PK violation surfaces as **500**.
+* **Repro (before):** pre-check forced to miss → uncaught `IntegrityError` → **500** (`BEFORE_api_exploits.txt`).
+* **Fix:** wrap `commit()` in `try/except IntegrityError` → `rollback()` → **409**. The PK constraint, not
+  the pre-check, is the real guard. Test `test_concurrent_duplicate_create_no_500`.
 
-## Maintainability Concerns
-`/internal` shares the public router (no boundary); scoring rules duplicated conceptually between contract and Rust (acceptable, single source is Rust); worker error taxonomy is binary (success/failed) with no retryable/permanent distinction (A5-8).
+### A5-17 — Internal auth FAIL-OPEN when `A3_INTERNAL_TOKEN` unset (v1-fix regression) 🟠 **[B]** ✅ FIXED **[NEW]**
+* **Category:** AuthZ. **File:** `app/routes.py`.
+* **Exploit:** v1 made the token *optional* (`if _INTERNAL_TOKEN is not None and …`). In the default
+  config (no env var) the guard was skipped entirely → `/internal/*` open to anyone. This is the actual
+  root cause behind A5-2 and the reason the v1 "fix" did not close the loop.
+* **Repro (before):** default config, no token → forged callback **HTTP 200** (`BEFORE_api_exploits.txt`).
+* **Fix:** **fail-closed** — `_check_internal_auth()` returns **503 "internal auth not configured"** when
+  no server token is set, so `/internal/*` is *never* reachable without a token in any environment.
+  **Verified:** `AFTER_failclosed_default_config.txt` (no token → 503). Test
+  `test_internal_score_fail_closed_when_unconfigured`.
 
-## Suggested Fixes (priority order)
-1. **A5-1** validate `transaction_id` (`pattern=^[A-Za-z0-9_-]{1,64}$`) + path-containment assert in `enqueue`.
-2. **A5-2** auth-gate `/internal/*` (shared secret / network isolation).
-3. **A5-3** idempotent create (check-then-insert or catch IntegrityError → 409).
-4. **A5-4** money to integer minor units / Decimal.
-5. **A5-6/7/8** queue-claim, engine timeout, retryable-vs-permanent + redrive.
+### A5-18 — Integration harness broken: unbound `$polyglot-fraud-system` 🟠 **[B]** ✅ FIXED **[NEW]**
+* **Category:** Contract fidelity / tooling. **File:** `integration-tests/run_integration.sh`.
+* **Defect:** lines 14/15/25/52 referenced `$polyglot-fraud-system`; the component root var is `$A3`.
+  Under `set -u`, `$polyglot` is unbound → script aborts on line 14 (`exit 1`). E2E never ran — making
+  the v1 "4/4 PASS" claim impossible.
+* **Repro (before):** `polyglot: unbound variable; exit=1` (`BEFORE_integration.txt`).
+* **Fix:** use `$A3` (resolved from `BASH_SOURCE`) and plumb a per-run `A3_INTERNAL_TOKEN` to both the API
+  and the worker (required now that auth is fail-closed). **Verified:** **4/4 PASS, exit 0**
+  (`suites/AFTER_integration.txt`).
 
----
+### A5-19 — Timing-unsafe token comparison 🟡 ✅ FIXED **[NEW]**
+* **Category:** AuthZ. **File:** `app/routes.py`.
+* **Risk:** v1 used `x_internal_token != _INTERNAL_TOKEN` (`==`), a non-constant-time compare that can
+  leak the secret byte-by-byte via timing.
+* **Fix:** `hmac.compare_digest(...)`. Covered by `test_internal_score_requires_token` (wrong token → 401).
 
-## Agent vs Verified
-
-### Potential issues (reasoned from code, not executed)
-A5-4 (float precision — type confirmed, impact inferred), A5-5 (non-atomic enqueue), A5-6 (double-processing), A5-7 (no engine timeout), A5-8 (dead-letter), A5-9/10/11/12.
-
-### Verified issues (reproduced live, evidence captured)
-* **A5-1** — POST `transaction_id="../A5_PWNED"` → `201`; file created at `/tmp/a5_repro/A5_PWNED.json` **outside** `queue/`.
-* **A5-2** — `/internal/.../score` with no auth forced a 999999/US/gambling txn to `score 0 / low`.
-* **A5-3** — duplicate `transaction_id`: first `201`, second `500`.
+### A5-20 — Worker contract drift under fail-closed auth 🟡 ✅ FIXED **[NEW]**
+* **Category:** Contract fidelity. **File:** `node-worker/src/worker.js`, `integration-tests/run_integration.sh`.
+* **Risk:** with the API now fail-closed, a worker that doesn't send `X-Internal-Token` would have *every*
+  `postScore` rejected (401) and dead-letter all work — a silent contract drift between API and worker.
+* **Fix:** the worker already reads `A3_INTERNAL_TOKEN` and attaches `X-Internal-Token` when set; the
+  integration harness now exports a shared token to both. **Verified end-to-end:** integration 4/4 PASS
+  proves the worker authenticates successfully (`suites/AFTER_integration.txt`).
 
 ---
 
-## Remediation Status (post-review)
-The 3 blocking issues were subsequently **fixed in A3 and regression-tested** (verified):
-* **A5-1** → `transaction_id` constrained (`pattern=^[A-Za-z0-9_-]{1,64}$`) + path-containment in `queue.py`; test `test_path_traversal_transaction_id_rejected` (traversal id → **422**, no escape).
-* **A5-2** → optional `X-Internal-Token` auth on `/internal/*`; test `test_internal_score_requires_token_when_configured` (**401** without / **200** with).
-* **A5-3** → idempotent create returns **409**; test `test_duplicate_transaction_id_returns_409`.
-A3 fastapi suite: 7 → **10 passed**; end-to-end integration still **4/4 PASS**. (A5-4..12 remain as backlog.)
+## Blocking issues — all closed
 
-## Completion Criteria
-- [x] Issue list (12, across all 11 dimensions)
-- [x] Severity assigned (Critical/High/Medium/Low)
-- [x] Blocking classification (3 blocking)
-- [x] Fix proposal per issue
-- [x] Verification steps per issue (reproduce + verify-fix + expected outcome)
-- [x] `A5_adversarial_review.md`
+| ID | Title | Before | After | Test |
+|---|---|---|---|---|
+| A5-1 | Path traversal | file escapes `queue/` | 422 | `test_path_traversal_transaction_id_rejected` |
+| A5-2/A5-17 | Internal auth fail-open | forged 200 | 401 / 503 fail-closed | `test_internal_score_requires_token`, `…_fail_closed_…` |
+| A5-3 | Duplicate → 500 | 500 | 409 | `test_duplicate_transaction_id_returns_409` |
+| A5-13 | Score poisoning | 999 stored | 422 | `test_score_poisoning_*`, `…_band_mismatch_…` |
+| A5-14 | Callback overwrite | flipped to low | 409 / idempotent | `test_callback_overwrite_rejected`, `…_idempotent_replay` |
+| A5-16 | Concurrent IntegrityError | 500 | 409 | `test_concurrent_duplicate_create_no_500` |
+| A5-18 | Integration broken | exit 1 | 4/4 PASS, exit 0 | `run_integration.sh` |
+
+## Agent-reasoned vs live-verified
+
+* **Live-verified (reproduced before & after):** A5-1, A5-2, A5-13, A5-14, A5-15, A5-16, A5-17, A5-18
+  (see `artifacts/repro/`).
+* **Test-verified:** A5-3, A5-7, A5-9, A5-10, A5-19, A5-20 (unit/integration assertions).
+* **Reasoned-from-code (deferred-with-rationale):** A5-4 (boundary test), A5-5, A5-6 (mitigated by A5-14),
+  A5-8, A5-11, A5-12.
+
+## Suite results (final)
+
+```
+rust    : cargo test  → 7 passed   (suites/AFTER_rust.txt)
+fastapi : pytest -q   → 18 passed  (suites/AFTER_pytest.txt)
+node    : npm test    → 14 passed  (suites/AFTER_node.txt)
+e2e     : run_integration.sh → INTEGRATION: PASS (4/4), exit 0  (suites/AFTER_integration.txt)
+```
+
+See `docs/REMEDIATION_LOG.md` for per-fix before/after diffs+repro and `docs/TEST_MATRIX.md` for the
+finding→test mapping.

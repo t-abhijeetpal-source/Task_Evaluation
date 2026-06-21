@@ -124,6 +124,53 @@ describe('callEngine', () => {
       callEngine(JSON.stringify(validTxn), { spawn })
     ).rejects.toThrow(/failed to parse engine output/);
   });
+
+  test('A5-7: rejects (and kills child) when the engine never closes', async () => {
+    // A child that attaches streams but NEVER emits "close" — simulates a hung
+    // engine. Without a timeout the Promise would hang forever.
+    let killed = false;
+    const spawn = jest.fn(() => {
+      const child = new EventEmitter();
+      child.stdin = { write() {}, end() {} };
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+      child.kill = () => {
+        killed = true;
+      };
+      return child; // no close event, ever
+    });
+
+    await expect(
+      callEngine(JSON.stringify(validTxn), { spawn, timeoutMs: 20 })
+    ).rejects.toThrow(/timed out after 20ms/);
+    expect(killed).toBe(true);
+  });
+
+  test('A5-10: rejects when engine stdout exceeds the output cap', async () => {
+    let killed = false;
+    const spawn = jest.fn(() => {
+      const child = new EventEmitter();
+      child.stdin = { write() {}, end() {} };
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+      child.kill = () => {
+        killed = true;
+      };
+      process.nextTick(() => {
+        child.stdout.emit('data', Buffer.from('x'.repeat(50)));
+      });
+      return child;
+    });
+
+    await expect(
+      callEngine(JSON.stringify(validTxn), {
+        spawn,
+        maxOutputBytes: 10,
+        timeoutMs: 1000,
+      })
+    ).rejects.toThrow(/exceeded 10 bytes/);
+    expect(killed).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -11,8 +11,14 @@ PORT="${A3_PORT:-8078}"
 RUNDIR="$A3/integration-tests/.run"
 QUEUE_DIR="$RUNDIR/queue"
 DB="$RUNDIR/a3.db"
-ENGINE="$polyglot-fraud-system/rust-engine/target/release/fraud-engine"
-PYBIN="$polyglot-fraud-system/fastapi-service/.venv/bin/python"
+# A5-18: these previously referenced $polyglot-fraud-system — an UNBOUND variable
+# under `set -u` that aborted the script before any component started. Use $A3
+# (resolved from this script's own location above).
+ENGINE="$A3/rust-engine/target/release/fraud-engine"
+PYBIN="$A3/fastapi-service/.venv/bin/python"
+# A5-2 / A5-17: the internal callback is now fail-closed, so the API and the
+# worker must share an internal token. Generated per-run.
+export A3_INTERNAL_TOKEN="${A3_INTERNAL_TOKEN:-itest-$$-$RANDOM}"
 
 fail() { echo "FAIL: $1"; [ -n "${SP:-}" ] && kill "$SP" 2>/dev/null; exit 1; }
 
@@ -22,7 +28,8 @@ OLD=$(lsof -tiTCP:$PORT -sTCP:LISTEN 2>/dev/null); [ -n "$OLD" ] && { echo "free
 rm -rf "$RUNDIR"; mkdir -p "$QUEUE_DIR"
 
 echo "== starting FastAPI on :$PORT (fresh DB + queue) =="
-( cd "$polyglot-fraud-system/fastapi-service" && QUEUE_DIR="$QUEUE_DIR" DATABASE_URL="sqlite:///$DB" \
+( cd "$A3/fastapi-service" && QUEUE_DIR="$QUEUE_DIR" DATABASE_URL="sqlite:///$DB" \
+    A3_INTERNAL_TOKEN="$A3_INTERNAL_TOKEN" \
     "$PYBIN" -m uvicorn app.main:app --port $PORT >"$RUNDIR/api.log" 2>&1 ) &
 SP=$!
 UP=""
@@ -49,7 +56,8 @@ echo "queued files: $QN"
 [ "$QN" = "4" ] || fail "expected 4 queued files, found $QN (server/enqueue not working — would have been a false pass)"
 
 echo "== run Node worker (--once): consumes queue, calls Rust, posts score back =="
-( cd "$polyglot-fraud-system/node-worker" && QUEUE_DIR="$QUEUE_DIR" API_URL="http://localhost:$PORT" ENGINE_BIN="$ENGINE" \
+( cd "$A3/node-worker" && QUEUE_DIR="$QUEUE_DIR" API_URL="http://localhost:$PORT" ENGINE_BIN="$ENGINE" \
+    A3_INTERNAL_TOKEN="$A3_INTERNAL_TOKEN" \
     node src/worker.js --once >"$RUNDIR/worker.log" 2>&1 ) || fail "worker exited non-zero; see worker.log"
 
 echo "== GET each transaction and assert score (expected per CONTRACT.md) =="

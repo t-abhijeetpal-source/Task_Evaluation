@@ -80,6 +80,22 @@ fn score_is_clamped_to_100() {
 }
 
 #[test]
+fn high_amount_threshold_boundary() {
+    // A5-4 (deferred): `amount` is an f64 and the threshold is strict `> 10000`.
+    // This test pins the boundary contract so any future move to integer minor
+    // units / Decimal must preserve it:
+    //   - exactly 10000      -> NOT high_amount (rule is strictly greater-than)
+    //   - just above 10000   -> high_amount fires
+    let at = score(&txn(10000.0, "IN", "electronics"));
+    assert_eq!(at.score, 0, "amount == 10000 must NOT trigger high_amount");
+    assert!(!at.reasons.contains(&"high_amount".to_string()));
+
+    let above = score(&txn(10000.01, "IN", "electronics"));
+    assert_eq!(above.score, 40, "amount > 10000 must trigger high_amount");
+    assert!(above.reasons.contains(&"high_amount".to_string()));
+}
+
+#[test]
 fn malformed_json_is_err_no_panic() {
     // Parsing bad input must return Err (never panic).
     let parsed: Result<Transaction, _> = serde_json::from_str("{ not valid json ");

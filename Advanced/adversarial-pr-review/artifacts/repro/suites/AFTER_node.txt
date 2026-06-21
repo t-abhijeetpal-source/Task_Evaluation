@@ -1,0 +1,21 @@
+  callEngine
+    ✓ resolves parsed score JSON on exit 0 (2 ms)
+    ✓ writes the transaction JSON to engine stdin (2 ms)
+    ✓ rejects on non-zero exit (8 ms)
+    ✓ rejects on unparseable stdout (1 ms)
+    ✓ A5-7: rejects (and kills child) when the engine never closes (21 ms)
+    ✓ A5-10: rejects when engine stdout exceeds the output cap (1 ms)
+  postScore
+    ✓ posts to the contract URL with the score body
+    ✓ rejects when transaction_id is missing (2 ms)
+  processFile — engine retry
+    ✓ engine fails twice then succeeds -> success (3 ms)
+    ✓ engine always fails -> rejects after 3 attempts, moved to failed/ (3 ms)
+  processFile
+    ✓ happy path: scores, posts, moves to processed/ (1 ms)
+    ✓ malformed engine output is handled (failed, no crash) (2 ms)
+    ✓ malformed transaction file is handled (failed, no crash) (1 ms)
+  processQueueOnce
+    ✓ returns a {processed, failed} summary across files
+Test Suites: 1 passed, 1 total
+Tests:       14 passed, 14 total

@@ -30,6 +30,10 @@ const config = {
   MAX_ATTEMPTS: 3,
   BACKOFF_MS: 100,
   POLL_INTERVAL_MS: 2000,
+  // A5-7: kill a hung engine so it can't stall the sequential queue loop forever.
+  ENGINE_TIMEOUT_MS: Number(process.env.ENGINE_TIMEOUT_MS) || 5000,
+  // A5-10: cap engine stdout so a misbehaving engine can't exhaust worker memory.
+  MAX_OUTPUT_BYTES: Number(process.env.MAX_OUTPUT_BYTES) || 1024 * 1024,
 };
 
 // ---------------------------------------------------------------------------
@@ -78,6 +82,10 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 function callEngine(txnJsonString, deps = {}) {
   const spawn = deps.spawn || spawnDefault;
   const engineBin = deps.engineBin || config.ENGINE_BIN;
+  const timeoutMs =
+    deps.timeoutMs != null ? deps.timeoutMs : config.ENGINE_TIMEOUT_MS;
+  const maxOutputBytes =
+    deps.maxOutputBytes != null ? deps.maxOutputBytes : config.MAX_OUTPUT_BYTES;
 
   return new Promise((resolve, reject) => {
     let child;
@@ -91,16 +99,45 @@ function callEngine(txnJsonString, deps = {}) {
     let stdout = '';
     let stderr = '';
     let settled = false;
+    let timer = null;
+
+    // Best-effort kill of the child (tolerates fakes without .kill in tests).
+    const killChild = () => {
+      try {
+        if (typeof child.kill === 'function') child.kill('SIGKILL');
+      } catch (_e) {
+        /* ignore */
+      }
+    };
 
     const fail = (err) => {
       if (settled) return;
       settled = true;
+      if (timer) clearTimeout(timer);
       reject(err);
     };
+
+    // A5-7: bound the engine call. A hung/never-closing engine would otherwise
+    // leave this Promise pending forever and block the whole sequential loop.
+    if (timeoutMs > 0) {
+      timer = setTimeout(() => {
+        killChild();
+        fail(new Error(`engine timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+      // Don't let the timer keep the event loop alive on its own.
+      if (timer && typeof timer.unref === 'function') timer.unref();
+    }
 
     if (child.stdout) {
       child.stdout.on('data', (d) => {
         stdout += d.toString();
+        // A5-10: cap buffered output so a chatty/runaway engine can't OOM us.
+        if (stdout.length > maxOutputBytes) {
+          killChild();
+          fail(
+            new Error(`engine output exceeded ${maxOutputBytes} bytes; aborting`)
+          );
+        }
       });
     }
     if (child.stderr) {
@@ -115,6 +152,7 @@ function callEngine(txnJsonString, deps = {}) {
 
     child.on('close', (code) => {
       if (settled) return;
+      if (timer) clearTimeout(timer);
       if (code !== 0) {
         fail(
           new Error(

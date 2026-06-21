@@ -1,0 +1,34 @@
+# A5-17 — Default config (A3_INTERNAL_TOKEN unset) is FAIL-CLOSED (AFTER)
+# /internal/* must be UN-callable when no token is configured.
+
+[A5-2/A5-17] Internal scoring callback auth
+------------------------------------------------------------------------
+  POST /internal/.../score with NO token header -> HTTP 503
+  GET victim1 after unauth callback -> {"transaction": {"schema_version": "1.0", "transaction_id": "victim1", "user_id": "victim", "amount": 999999.0, "country": "US", "merchant_category": "gambling"
+  >>> SAFE: unauthenticated callback rejected
+
+[A5-13] Score poisoning (range + band validation)
+------------------------------------------------------------------------
+  POST score=999 risk_level=low -> HTTP 422
+  GET poison1 -> {"transaction": {"schema_version": "1.0", "transaction_id": "poison1", "user_id": "victim", "amount": 15000.0, "country": "US", "merchant_category": "gambling",
+  >>> SAFE: bogus score rejected
+
+[A5-15] Path vs body transaction_id mismatch
+------------------------------------------------------------------------
+  POST path=realA body.transaction_id=totally_different -> HTTP 503
+  >>> SAFE: id mismatch rejected
+
+[A5-14] Callback overwrite of an already-scored transaction
+------------------------------------------------------------------------
+  1st score (90/high) -> HTTP 503
+  2nd score (0/low)   -> HTTP 503
+  GET ow1 -> {"transaction": {"schema_version": "1.0", "transaction_id": "ow1", "user_id": "victim", "amount": 15000.0, "country": "US", "merchant_category": "gambling", "ti
+  >>> SAFE: conflicting re-score rejected / idempotent
+
+[A5-16] Concurrent duplicate create (TOCTOU -> IntegrityError)
+------------------------------------------------------------------------
+  duplicate create with pre-check forced to miss -> HTTP 409
+  >>> SAFE: IntegrityError caught -> 409 conflict
+
+========================================================================
+repro complete

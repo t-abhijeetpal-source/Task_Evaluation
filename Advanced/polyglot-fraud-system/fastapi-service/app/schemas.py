@@ -16,8 +16,10 @@ class TransactionIn(BaseModel):
 
 class ScoreResult(BaseModel):
     schema_version: str = "1.0"
-    transaction_id: str
-    score: int
+    transaction_id: str = Field(..., pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    # Defense-in-depth bound (A5-13): the route also validates range + band, but
+    # rejecting out-of-range scores at the schema layer closes the gap entirely.
+    score: int = Field(..., ge=0, le=100)
     risk_level: str
     reasons: List[str]
 
