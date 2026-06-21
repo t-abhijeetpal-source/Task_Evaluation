@@ -1,0 +1,37 @@
+# I1 ER Diagram — CI snippet (documentation copy)
+#
+# The live workflow is committed at .github/workflows/i1-er-diagram.yml.
+# This file documents the minimal CI addition so the gate is portable to any
+# CI system (GitLab CI, DevOps-Infra/ci-pipeline, Jenkins, etc.). The single
+# source of truth for the verification steps is `make i1-verify`.
+#
+# Minimal step (any runner with make + python3):
+#
+#   - name: I1 ER diagram validation
+#     run: make i1-verify
+#
+# Expanded equivalent (no make):
+#
+#   - name: I1 ER diagram validation
+#     working-directory: Intermediate/er-diagram
+#     run: |
+#       python -m venv .venv && . .venv/bin/activate
+#       pip install -r requirements.txt
+#       python -m pytest -v
+#       python scripts/validate_er_diagram.py
+#       python scripts/validate_er_diagram.py --stack prisma --prisma tests/fixtures/prisma-sample/schema.prisma
+#       bash scripts/check_spec_sync.sh
+#
+# Notes:
+#   * The validator runs OFFLINE — android-monorepo does NOT need to be checked out.
+#   * Add an optional live cross-check when the target repo is available:
+#       python scripts/validate_er_diagram.py --schema-json <…>/EquityDatabase/19.json
+name: i1-er-diagram (snippet)
+on: { workflow_dispatch: {} }
+jobs:
+  i1-er-diagram:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: I1 ER diagram validation
+        run: make i1-verify

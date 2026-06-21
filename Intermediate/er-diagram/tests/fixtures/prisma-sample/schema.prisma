@@ -1,0 +1,36 @@
+// Prisma fixture for the I1 validator's generalizability test (W19).
+// Demonstrates an EXPLICIT, VERIFIED foreign key via @relation:
+//   Post.author -> User  (Post holds authorId, the FK-bearing side)
+// User.posts and the Tag<->Post many-to-many back-references are NOT counted
+// as separate FKs, so the verified FK count is exactly 1.
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id    Int     @id @default(autoincrement())
+  email String  @unique
+  name  String?
+  posts Post[]
+}
+
+model Post {
+  id       Int    @id @default(autoincrement())
+  title    String
+  content  String?
+  author   User   @relation(fields: [authorId], references: [id])
+  authorId Int
+  tags     Tag[]
+}
+
+model Tag {
+  id    Int    @id @default(autoincrement())
+  name  String @unique
+  posts Post[]
+}

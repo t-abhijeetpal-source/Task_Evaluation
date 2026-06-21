@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 2,
+    "identityHash": "fixture0000000000000000000000000",
+    "entities": [
+      {
+        "tableName": "widget",
+        "createSql": "CREATE TABLE IF NOT EXISTS `widget` (`id` INTEGER NOT NULL, `name` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {"fieldPath": "id", "columnName": "id", "affinity": "INTEGER", "notNull": true},
+          {"fieldPath": "name", "columnName": "name", "affinity": "TEXT", "notNull": true}
+        ],
+        "primaryKey": {"columnNames": ["id"], "autoGenerate": true},
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "gadget",
+        "createSql": "CREATE TABLE IF NOT EXISTS `gadget` (`id` INTEGER NOT NULL, `label` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {"fieldPath": "id", "columnName": "id", "affinity": "INTEGER", "notNull": true},
+          {"fieldPath": "label", "columnName": "label", "affinity": "TEXT", "notNull": true}
+        ],
+        "primaryKey": {"columnNames": ["id"], "autoGenerate": true},
+        "indices": [],
+        "foreignKeys": []
+      }
+    ],
+    "views": []
+  }
+}

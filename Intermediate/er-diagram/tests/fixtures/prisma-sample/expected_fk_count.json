@@ -1,0 +1,5 @@
+{
+  "verified_fks": 1,
+  "models": ["User", "Post", "Tag"],
+  "_note": "Post.author @relation(fields: [authorId], references: [id]) is the single FK-bearing relation. Back-references (User.posts, Tag.posts) are not counted."
+}

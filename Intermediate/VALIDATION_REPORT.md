@@ -9,7 +9,7 @@
 
 | Task | Artifact | Independently validated this run | Status |
 |---|---|---|---|
-| **I1** ER diagram | `I1/I1_er_diagram.md` | 6 entities' file/table/PK re-checked vs source; schema JSONs confirmed (24+3=27 tables); **no `@ForeignKey`** confirmed by grep; Mermaid syntax checked | ✅ Production-quality |
+| **I1** ER diagram | `Intermediate/er-diagram/docs/agent-analysis/I1_er_diagram.md` | All **27** entities (24 equity + 3 logging) reconciled across inventory/PK/Mermaid/appendix/`@Database`/DAO; **no `@ForeignKey`** confirmed by grep (0); TypeConverters FOUND, `@Embedded` NOT FOUND; now **CI-gated** via `make i1-verify` (pytest 19 + validator + Prisma fixture + spec-sync). See `Intermediate/er-diagram/VERIFICATION_RESULTS.md`. | ✅ Production-quality |
 | **I2** flow trace | `I2/docs/.../I2_flow_trace.md` (moved to sibling ✅) | Entry-point file confirmed to exist; a **second** flow (recent-search, android-monorepo) independently traced with file:line evidence — corroborates the architecture | ✅ Production-quality |
 | **I3** safe change | `minimal-safe-change/docs/agent-analysis/I3_safe_change.md` | **Self-contained Python sandbox** added: seeded `YYYY-MM-DD` parse bug reproduced (`pytest` **2 failed → fix → 5 passed**, ruff clean) — clone-only via `make i3-verify`. Flutter original (`flutter test` 40/40) preserved as optional extended example. | ✅ Verified |
 | **I4** polyglot pair | `I4/` | Re-ran: **pytest 7 passed**, **jest 9 passed**; live curl all 6 rates + error paths | ✅ Verified |
@@ -20,7 +20,7 @@
 
 ## Improvements made this run
 
-- **I1:** independent re-validation of a sample of entities against source + schema JSONs (0 mismatches); confirmed the no-FK claim by grep; confirmed Mermaid validity. (Spec already hardened earlier with composite-PK/index/embedded handling + reconciliation cross-check.)
+- **I1:** hardened to a fully automated, CI-gated deliverable. Moved the artifact to `Intermediate/er-diagram/docs/agent-analysis/I1_er_diagram.md` (stub left at the old path); added a stdlib-only validator (`scripts/validate_er_diagram.py`) with 19 pytest tests, a Prisma generalizability fixture (1 verified FK), an agent-spec/skill sync guard, and a `make i1-verify` target wired into `make test` and CI. The artifact gained §6 Reconciliation, §7 Agent-vs-Verified, §8 Self-Consistency, §9 Known Uncertainties, §1.1 `@Database` registration, §3.1 TypeConverter/Embedded audit, §10 DAO inventory, PII/sensitivity classification, full schema paths (zero ellipsis), and multi-line Mermaid for all 27 entities. Validator cross-checked live against `EquityDatabase/19.json` (0 FKs, 24 tables).
 - **I2:** a second, independent flow trace (recent-search → Room `recent_search`, android-monorepo) was produced with exact `file:line` + DI bindings, corroborating the existing watchlist trace. Existing artifact already met the improved spec (confidence tags, error paths, self-consistency check).
 - **I3:** added a **self-contained Python sandbox** (`minimal-safe-change/sandbox/`) that mirrors the Flutter date-parser bug exactly (same garbage value `-61405935300` → fixed to `1755488700`), with real `pytest` before/after + `ruff`, a `make i3-verify` target, dedicated CI, an AI-judge `RUBRIC.md`, and a spec-sync guard — so I3 is now reproducible from a clone alone. The Flutter original (40/40) remains the optional extended example.
 - **I4:** re-validated both suites + live integration; `VERIFICATION_RESULTS.md` already present.

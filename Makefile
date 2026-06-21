@@ -21,7 +21,10 @@ RUST_PROJECTS := "Basics/rust-logcount-cli" "Advanced/polyglot-fraud-system/rust
 # Self-contained I3 "smallest safe change" sandbox (seeded date-parser bug + proof).
 I3_SANDBOX := "Intermediate/minimal-safe-change/sandbox"
 
-.PHONY: help bootstrap doctor setup-env verify test rust node python i3-verify i3-flutter-verify a3-integration clean
+# I1 ER-diagram task (artifact validator + spec-sync guard; no live repo required).
+I1_DIR := "Intermediate/er-diagram"
+
+.PHONY: help bootstrap doctor setup-env verify test rust node python i1-verify i3-verify i3-flutter-verify a3-integration clean
 
 help:  ## Show available targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) \
@@ -59,8 +62,18 @@ python:  ## Create venv + install + test all Python services
 			&& pip -q install -r requirements.txt && python -m pytest -q ) || exit 1; done
 
 verify: test  ## Alias for the full test suite
-test: rust node python i3-verify  ## Run every test suite (Rust + Node + Python + I3 sandbox)
+test: rust node python i3-verify i1-verify  ## Run every test suite (Rust + Node + Python + I3 sandbox + I1 ER diagram)
 	@echo "== ALL SUITES PASSED =="
+
+# ---- I1 — ER-diagram artifact (validator + tests + spec-sync; offline) ---------
+i1-verify:  ## Verify the I1 ER-diagram artifact (pytest + validator + Prisma fixture + spec-sync guard)
+	@echo "== i1: $(I1_DIR) =="
+	@( cd $(I1_DIR) && $(RUN) python -m venv .venv && . .venv/bin/activate \
+		&& pip -q install -r requirements.txt \
+		&& python -m pytest -v \
+		&& python scripts/validate_er_diagram.py \
+		&& python scripts/validate_er_diagram.py --stack prisma --prisma tests/fixtures/prisma-sample/schema.prisma ) || exit 1
+	@bash "Intermediate/er-diagram/scripts/check_spec_sync.sh"
 
 # ---- I3 — smallest safe change (self-contained sandbox) ------------------------
 i3-verify:  ## Verify the I3 safe-change sandbox (pytest + ruff + spec-sync guard)

@@ -1,5 +1,11 @@
 # I1 — Repository ER Diagram Agent (Language-Agnostic)
 
+> ⚙️ **Thin wrapper.** The **canonical** agent spec lives in
+> [`skills/tasks-er-diagram/SKILL.md`](../../skills/tasks-er-diagram/SKILL.md). Everything from
+> `## Role` onward in this file is kept byte-for-byte in sync with that skill by
+> [`scripts/check_spec_sync.sh`](scripts/check_spec_sync.sh) (wired into `make i1-verify` / CI).
+> Edit the skill, then re-sync this file — never edit one copy alone.
+
 > A reusable agent specification for reconstructing the **complete data model** of any
 > repository from source alone — SQL schemas, migrations, and ORM entities (Room, TypeORM,
 > Sequelize, Hibernate/JPA, SQLAlchemy, Prisma, Django, drift/floor, GORM, …).

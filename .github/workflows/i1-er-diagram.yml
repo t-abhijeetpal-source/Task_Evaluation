@@ -1,0 +1,98 @@
+name: I1 ER Diagram Validation
+
+# Verifies the I1 ER-diagram task: pytest -> artifact validator (offline) ->
+# Prisma generalizability fixture -> agent-spec single-source-of-truth guard.
+# The validator runs OFFLINE (it does not need android-monorepo checked out).
+# Path-filtered so it only runs when the module, skill, or this workflow changes.
+on:
+  push:
+    paths:
+      - "Intermediate/er-diagram/**"
+      - "skills/tasks-er-diagram/**"
+      - ".github/workflows/i1-er-diagram.yml"
+  pull_request:
+    paths:
+      - "Intermediate/er-diagram/**"
+      - "skills/tasks-er-diagram/**"
+      - ".github/workflows/i1-er-diagram.yml"
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: i1-er-diagram-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  i1-er-diagram:
+    name: i1-er-diagram
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: "Intermediate/er-diagram/requirements.txt"
+
+      - name: Install dependencies (pytest)
+        working-directory: "Intermediate/er-diagram"
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run tests (pytest)
+        working-directory: "Intermediate/er-diagram"
+        run: |
+          . .venv/bin/activate
+          python -m pytest -v --junitxml=test-results.xml
+
+      - name: Validate artifact (offline internal consistency)
+        working-directory: "Intermediate/er-diagram"
+        run: |
+          . .venv/bin/activate
+          python scripts/validate_er_diagram.py
+
+      - name: Validate Prisma fixture (generalizability)
+        working-directory: "Intermediate/er-diagram"
+        run: |
+          . .venv/bin/activate
+          python scripts/validate_er_diagram.py --stack prisma --prisma tests/fixtures/prisma-sample/schema.prisma
+
+      - name: Agent-spec sync guard (SKILL.md == I1_agent.md)
+        run: bash Intermediate/er-diagram/scripts/check_spec_sync.sh
+
+      # Equivalent single-command entrypoint (kept commented as documentation):
+      #   make i1-verify
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: i1-test-results
+          path: "Intermediate/er-diagram/test-results.xml"
+          retention-days: 7
+
+      - name: Summary
+        if: success()
+        run: |
+          {
+            echo "### ✅ i1-er-diagram passed"
+            echo "- Tests: pytest (Python ${{ matrix.python-version }})"
+            echo "- Validator: artifact reconciles to 27 entities (24 equity + 3 logging), 0 FKs"
+            echo "- Prisma fixture: 1 VERIFIED @relation FK detected"
+            echo "- Spec sync: SKILL.md body == I1_agent.md (canonical)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Failure summary
+        if: failure()
+        run: |
+          {
+            echo "### ❌ i1-er-diagram failed"
+            echo "See the failing step above and the uploaded test-results artifact."
+          } >> "$GITHUB_STEP_SUMMARY"

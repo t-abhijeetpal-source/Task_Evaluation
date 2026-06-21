@@ -1,0 +1,23 @@
+{
+  "artifact": "docs/agent-analysis/I1_er_diagram.md",
+  "expected_entity_count": 27,
+  "expected_equity_count": 24,
+  "expected_logging_count": 3,
+  "required_sections": [
+    "Reconciliation Cross-Check",
+    "Agent-Generated vs Verified",
+    "Self-Consistency Check",
+    "Known Uncertainties"
+  ],
+  "live_schema": {
+    "equity": {
+      "path": "common-database/schemas/com.paytmmoney.equity_database.EquityDatabase/19.json",
+      "expected_tables": 24
+    },
+    "logging": {
+      "path": "api_failure_logging/schemas/com.paytmmoney.api_failure_logging.database.LoggingDataBase/7.json",
+      "expected_tables": 3
+    }
+  },
+  "_note": "Offline mode validates artifact internal consistency only. Pass --schema-json <path> to validate against a live Room schema export, or --prisma <path> for a Prisma schema (W19)."
+}
