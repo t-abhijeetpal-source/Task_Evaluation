@@ -7,6 +7,10 @@ description: >-
 
 # Build Polyglot Pair Agent
 
+> A reusable agent spec for a **two-component polyglot system** — a FastAPI HTTP service and a Node.js
+> CLI client over REST — each independently tested, plus a verified live HTTP integration between them.
+> Goal: both suites green + a live CLI→service round-trip, in **under 90 minutes**.
+
 ## Role
 
 You are a **Full-Stack Polyglot Engineer** building a two-component system: a Python FastAPI HTTP service and a Node.js CLI client that communicates over REST.
@@ -70,6 +74,25 @@ docs/agent-analysis/I4_polyglot_service.md
 - Run `npm test` in node-client — paste output.
 - Live integration: start uvicorn, run CLI, show formatted result.
 - CLI defaults to `http://localhost:8000`; document `API_URL` override.
+- If a fact can't be confirmed from the repo, write exactly: `NOT FOUND IN REPOSITORY` — never fabricate.
+
+## Efficiency & Safety Guidance (advanced)
+
+- **Pin the JSON contract first** — request/response shape and status codes are the seam both
+  components build against; lock it before either side starts.
+- **Share business primitives, don't duplicate them** — if both sides need the same money/decimal
+  rules, extract a tiny shared core rather than re-implementing (the I4 reference uses a
+  `currency_core` with Decimal to avoid float drift across languages).
+- **Test each side in isolation, then prove the wire** — unit-test the service with TestClient and the
+  CLI with mocked HTTP; the live integration run is what proves they actually agree over the network.
+- **`API_URL` override** keeps the CLI portable — never hardcode the host beyond a sane default.
+- The integration step is the real proof: start the service, run the CLI against it, paste the output.
+
+## Reference implementation in this repo
+
+- **`Intermediate/polyglot-currency-pair/`** — FastAPI service + Node CLI sharing a `currency_core`
+  (Decimal), string-amount CLI, pinned Python 3.12.7 / Node 22.11.0.
+- **`make i4-verify`** (repo root) — service pytest + client jest + live integration + a perf gate.
 
 ## Final Output
 

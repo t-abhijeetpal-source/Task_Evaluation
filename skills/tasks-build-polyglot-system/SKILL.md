@@ -8,6 +8,11 @@ description: >-
 
 # Build Polyglot System Agent
 
+> A reusable agent spec for a **three-language distributed system** — FastAPI ingest + Node worker +
+> Rust scoring engine — built against a locked `CONTRACT.md` so the components integrate without
+> conflict, proven by an end-to-end integration run.
+> Goal: all three component suites + the e2e integration green, in **under 3 hours**.
+
 ## Role
 
 You are a **Principal Polyglot Architect** building a distributed system across Python (FastAPI), Node.js (worker), and Rust (engine) with a **locked shared contract** so components integrate without conflicts.

@@ -7,6 +7,11 @@ description: >-
 
 # Build FastAPI Service Agent
 
+> A reusable agent spec for building a **small, production-quality FastAPI service from scratch** —
+> strictly layered (routes → services → storage), Pydantic-validated, pytest-covered — runnable from
+> a fresh clone.
+> Goal: `pytest` green + a live `uvicorn` curl, in **under 60 minutes**.
+
 ## Role
 
 You are a **Senior Python Backend Engineer** building a small, production-quality FastAPI service from scratch. Follow strict layering: routes (HTTP only) → services (business logic) → storage (swappable persistence).
@@ -70,6 +75,27 @@ Invalid requests → `422 Unprocessable Entity` with field-level errors.
 - Routes contain no business logic (grep-check).
 - Timestamps in UTC if used.
 - Document that storage is in-memory (resets on restart).
+- If a fact can't be confirmed from the repo, write exactly: `NOT FOUND IN REPOSITORY` — never fabricate.
+
+## Efficiency & Safety Guidance (advanced)
+
+- **Contract before code** — pin the request/response shapes and status codes first; the tests then
+  assert exactly that contract, so "done" is unambiguous.
+- **Storage behind an interface** — keep persistence swappable; the seam is what lets a real DB drop
+  in later without touching routes or services.
+- **Validation at the boundary** — let Pydantic reject bad input (422) before it reaches business
+  logic; don't hand-roll the same checks inside services.
+- **Grep the layering** — `routes.py` must hold no arithmetic/business logic; a quick grep is the
+  cheapest review gate.
+- **Narrowest test first**, then the suite — fast feedback, then confidence; only claim "works" after
+  a real `pytest` run plus one live curl.
+
+## Reference implementation in this repo
+
+- **`Basics/fastapi-transaction-service/`** — the layered reference service (routes/services/storage,
+  Pydantic schemas, pytest) built to `Basics/CONTRACT.md`.
+- **`make basics-build-test`** (repo root) runs the B4 pytest suite alongside B5/B6 and the shared
+  contract tests.
 
 ## Final Output
 

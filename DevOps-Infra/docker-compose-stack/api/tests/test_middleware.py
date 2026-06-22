@@ -5,11 +5,10 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 
+import app.main as main_module
 import pytest
 from app.metrics import REGISTRY
 from fastapi.testclient import TestClient
-
-import app.main as main_module
 
 
 def test_request_id_header_is_hex_uuid(client: TestClient) -> None:

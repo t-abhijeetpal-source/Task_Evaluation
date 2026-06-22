@@ -5,3 +5,7 @@ httpx==0.28.1
 ruff==0.15.17
 mypy==2.1.0
 pip-audit==2.10.1
+# Schema migrations (ops tool; kept out of the lean runtime image — run from a
+# venv or a one-off `docker compose run`). See docs/RUNBOOK.md §migrations.
+alembic==1.16.5
+SQLAlchemy==2.0.44

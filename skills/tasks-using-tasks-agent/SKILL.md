@@ -1,15 +1,16 @@
 ---
 name: tasks-using-tasks-agent
 description: >-
-  Entry point for Tasks Agent skills (Base B1-B6, Intermediate I1-I6, Advanced A1-A6).
+  Entry point for Tasks Agent skills (Base B1-B6, Intermediate I1-I6, Advanced A1-A6, DevOps D1-D6).
   Use when starting repo analysis, greenfield builds, polyglot systems, bug diagnosis,
-  adversarial review, or any tasks-* workflow. Routes to the correct specialized skill.
+  adversarial review, IaC / CI / Kubernetes / observability / dev-env work, or any tasks-* workflow.
+  Routes to the correct specialized skill.
 disable-model-invocation: false
 ---
 
 # Tasks Agent
 
-A **tiered agentic skill library** for repository understanding, safe changes, greenfield builds, and advanced multi-agent orchestration. Skills are namespaced `tasks-*` and installed globally in Cursor.
+A **tiered agentic skill library** for repository understanding, safe changes, greenfield builds, advanced multi-agent orchestration, and DevOps/infra hardening. Skills are namespaced `tasks-*` and installed globally in Cursor.
 
 ## Constitution (applies to ALL tasks-* skills)
 
@@ -19,6 +20,9 @@ A **tiered agentic skill library** for repository understanding, safe changes, g
 4. **Prove execution** — test/build/run claims require real terminal output.
 5. **Minimal scope** — touch only what the task requires; surgical diffs for changes.
 6. **Separate agent vs verified** — distinguish what was read vs what was executed.
+7. **Offline-reproducible (DevOps tier)** — infra/CI/k8s artifacts must validate and prove out from a
+   clone with no live cloud account (mock creds, offline plan, kind, simulated fresh clone); a check
+   a reviewer can't reproduce doesn't count.
 
 ## Optional MCP boost
 
@@ -46,6 +50,12 @@ If `user-codegraph` MCP is connected, prefer it for symbol search, references, a
 | Modernization / Makefile / DX audit | `tasks-modernization-plan` |
 | Adversarial / security review | `tasks-adversarial-review` |
 | Performance profile / optimize endpoint | `tasks-performance-optimization` |
+| Terraform / AWS Lambda+APIGW+S3 / IaC / `terraform plan` | `tasks-terraform-aws-stack` |
+| docker-compose multi-service stack / API+DB+worker / clean re-up | `tasks-docker-compose-stack` |
+| CI pipeline / GitHub Actions / coverage gate / non-root image | `tasks-ci-pipeline` |
+| Kubernetes manifests / kustomize / NetworkPolicy/PDB/HPA / kind | `tasks-kubernetes-manifests` |
+| Reproducible dev env / fresh-clone bootstrap / pinned toolchain | `tasks-reproducible-dev-env` |
+| Observability / Prometheus / Grafana / metrics / tracing / alerts | `tasks-observability` |
 
 ## Tiers
 
@@ -54,6 +64,7 @@ If `user-codegraph` MCP is connected, prefer it for symbol search, references, a
 | **Base (B1–B6)** | repo-inventory, api-mapping, test-discovery, build-fastapi/node/rust | Read repos + greenfield builders |
 | **Intermediate (I1–I6)** | er-diagram, flow-trace, safe-change, build-polyglot-pair, dockerize, bug-diagnosis | Deeper analysis + integration |
 | **Advanced (A1–A6)** | parallel-repo-analysis, parallel-app-build, build-polyglot-system, modernization-plan, adversarial-review, performance-optimization | Multi-agent orchestration + hardening |
+| **DevOps (D1–D6)** | terraform-aws-stack, docker-compose-stack, ci-pipeline, kubernetes-manifests, reproducible-dev-env, observability | Offline-reproducible infra, CI, k8s, dev-env, observability |
 
 ## How to invoke
 
@@ -73,7 +84,7 @@ Canonical skill files live in the Tasks repo:
 Tasks/skills/tasks-*/SKILL.md
 ```
 
-Original agent specs remain at `Basics/B*_agent.md`, `Intermediate/I*_agent.md`, and `Advanced/A*/docs/`.
+Original agent specs remain at `Basics/B*_agent.md`, `Intermediate/I*_agent.md`, `Advanced/A*/docs/`, and the hardened DevOps tasks at `DevOps-Infra/*/` (validated end-to-end in `DevOps-Infra/D_DEVOPS_VALIDATION_SUMMARY.md`).
 
 ## Install
 

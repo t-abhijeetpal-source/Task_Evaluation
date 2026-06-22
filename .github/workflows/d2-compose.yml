@@ -1,0 +1,91 @@
+name: D2 Compose Stack
+
+# Validates the multi-service Compose stack on every change:
+#   unit ─┐  (ruff + mypy --strict + pytest/coverage for api & worker + pip-audit)
+#   e2e  ─┴─ (docker compose up --wait → integration-test.sh → clean re-up proof)
+on:
+  push:
+    paths:
+      - "DevOps-Infra/docker-compose-stack/**"
+      - ".github/workflows/d2-compose.yml"
+  pull_request:
+    paths:
+      - "DevOps-Infra/docker-compose-stack/**"
+      - ".github/workflows/d2-compose.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d2-compose-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: DevOps-Infra/docker-compose-stack
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # ---- Lint · type-check · tests/coverage · dependency audit ------------------
+  unit:
+    name: Lint · Types · Tests · Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            DevOps-Infra/docker-compose-stack/api/requirements-dev.txt
+            DevOps-Infra/docker-compose-stack/worker/requirements-dev.txt
+
+      - name: Install dev deps (api + worker)
+        run: pip install -r api/requirements-dev.txt -r worker/requirements-dev.txt
+
+      - name: ruff (lint + format)
+        run: |
+          ruff check api worker
+          ruff format --check api worker
+
+      - name: mypy --strict
+        run: mypy api/app worker/worker.py
+
+      - name: pytest — api (coverage gate ≥90%)
+        run: cd api && python -m pytest
+
+      - name: pytest — worker (coverage gate ≥90%)
+        run: cd worker && python -m pytest
+
+      - name: pip-audit (runtime deps)
+        run: |
+          pip-audit -r api/requirements.txt
+          pip-audit -r worker/requirements.txt
+
+      - run: echo "### ✅ ruff · mypy · pytest (cov ≥90%) · pip-audit passed" >> "$GITHUB_STEP_SUMMARY"
+
+  # ---- Full-stack end-to-end (docker compose on the runner) -------------------
+  e2e:
+    name: Stack E2E (compose)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Seed demo .env + validate compose
+        run: |
+          cp .env.example .env
+          docker compose config -q
+          docker compose -f docker-compose.yml -f compose.prod.yml config -q
+        env:
+          POSTGRES_PASSWORD: ci-demo-pass
+          API_KEY: ci-demo-key
+
+      - name: verify-stack.sh (build → up --wait → E2E → clean-reup proof)
+        run: bash scripts/verify-stack.sh
+
+      - run: echo "### ✅ Full API→DB→worker flow verified end-to-end" >> "$GITHUB_STEP_SUMMARY"
