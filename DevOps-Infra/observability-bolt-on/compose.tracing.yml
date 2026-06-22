@@ -1,0 +1,28 @@
+# Distributed-tracing overlay — adds Jaeger and turns on OTel in the app.
+#   docker compose -f docker-compose.yml -f compose.tracing.yml up -d --build
+#   open http://localhost:16686   # Jaeger UI → service "d6-sample"
+services:
+  app:
+    environment:
+      OTEL_ENABLED: "true"
+      OTEL_SERVICE_NAME: d6-sample
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+    depends_on:
+      jaeger:
+        condition: service_started
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    container_name: d6-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686" # Jaeger UI
+      - "4318:4318" # OTLP/HTTP receiver
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    networks:
+      - obs

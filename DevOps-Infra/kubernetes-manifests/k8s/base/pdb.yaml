@@ -1,0 +1,16 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: d4-sample
+  namespace: d4-sample
+  labels:
+    app.kubernetes.io/name: d4-sample
+    app.kubernetes.io/component: api
+spec:
+  # Keep at least one pod serving through voluntary disruptions (node drains,
+  # cluster upgrades). Paired with maxUnavailable:0 in the rollout strategy,
+  # this preserves availability during both deploys and maintenance.
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: d4-sample

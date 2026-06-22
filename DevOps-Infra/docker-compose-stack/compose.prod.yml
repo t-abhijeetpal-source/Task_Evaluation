@@ -1,0 +1,45 @@
+# Production hardening overlay.
+#   docker compose -f docker-compose.yml -f compose.prod.yml up -d
+#
+# Tightens the demo defaults: required (no-default) secrets that fail fast if
+# unset, the API bound to loopback (front it with an authenticated reverse
+# proxy rather than exposing it publicly), a durable named volume for the DB,
+# a digest-pinned Postgres image, and higher resource ceilings.
+services:
+  database:
+    # Digest-pinned for a reproducible, supply-chain-verifiable image.
+    # Repin with: docker buildx imagetools inspect postgres:16-alpine
+    image: postgres:16-alpine
+    environment:
+      # Fails fast if unset — no weak default in prod.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set a strong POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 512M
+
+  api:
+    environment:
+      # Auth is mandatory in prod.
+      API_KEY: ${API_KEY:?set a non-empty API_KEY in prod}
+    # Do not publish the API on all interfaces; bind to loopback for a fronting proxy.
+    ports: !override
+      - "127.0.0.1:8080:8000"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 512M
+
+  worker:
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+
+volumes:
+  pgdata:

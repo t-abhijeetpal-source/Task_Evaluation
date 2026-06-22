@@ -1,0 +1,16 @@
+# Keep the build context minimal + reproducible.
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+tests/
+.env
+.git/
+.DS_Store

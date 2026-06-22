@@ -2,6 +2,17 @@ global:
   scrape_interval: 5s
   evaluation_interval: 5s
 
+# Alerting + recording rules evaluated every `evaluation_interval`.
+rule_files:
+  - /etc/prometheus/alerts.yml
+  - /etc/prometheus/recording_rules.yml
+
+# Route firing alerts to Alertmanager (compose service "alertmanager").
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
 scrape_configs:
   # The instrumented application — resolved via compose-network DNS (service "app").
   - job_name: "d6-app"
@@ -15,3 +26,8 @@ scrape_configs:
   - job_name: "prometheus"
     static_configs:
       - targets: ["localhost:9090"]
+
+  # Alertmanager health (so a dead notifier is itself visible).
+  - job_name: "alertmanager"
+    static_configs:
+      - targets: ["alertmanager:9093"]

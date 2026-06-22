@@ -1,0 +1,32 @@
+# Prometheus Operator scrape config for the D4 service.
+#
+# NOT included in kustomization.yaml by default: ServiceMonitor is a CRD
+# (monitoring.coreos.com/v1) that only exists once the Prometheus Operator /
+# kube-prometheus-stack is installed. Applying it on a vanilla cluster (or
+# dry-running it without the CRD) fails with "no matches for kind".
+#
+# To enable: install kube-prometheus-stack, then either add this file to the
+# `resources:` list in k8s/base/kustomization.yaml, or apply it directly:
+#   kubectl apply -f k8s/base/servicemonitor.yaml
+#
+# The annotation-based scrape on the Deployment pod template
+# (prometheus.io/scrape) is the no-Operator fallback and needs nothing extra.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: d4-sample
+  namespace: d4-sample
+  labels:
+    app.kubernetes.io/name: d4-sample
+    release: kube-prometheus-stack # match your Prometheus' serviceMonitorSelector
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: d4-sample
+  namespaceSelector:
+    matchNames:
+      - d4-sample
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s

@@ -21,17 +21,41 @@ spec:
       labels:
         app.kubernetes.io/name: d4-sample
         app.kubernetes.io/component: api
+      annotations:
+        # Annotation-based Prometheus scrape (works without the Operator).
+        # The Operator path is k8s/base/servicemonitor.yaml.
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
     spec:
+      serviceAccountName: d4-sample
+      # The app makes no Kubernetes API calls — withhold the token.
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
         seccompProfile:
           type: RuntimeDefault
+      # Spread replicas across zones first, then nodes, so a single
+      # zone/node failure can never take out the whole Deployment.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: d4-sample
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: d4-sample
       containers:
         - name: d4-sample
           image: d4-sample:v1
           # Image is side-loaded into kind (`kind load docker-image`), so never
-          # reach out to a registry.
+          # reach out to a registry. The prod overlay pins a registry digest.
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

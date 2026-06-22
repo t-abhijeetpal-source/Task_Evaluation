@@ -1,0 +1,36 @@
+# Log-aggregation overlay — Loki + Promtail scraping the d6-app JSON logs.
+#   docker compose -f docker-compose.yml -f compose.logs.yml up -d
+#   Grafana → Explore → "Loki" datasource → {container="d6-app"} | json
+services:
+  loki:
+    image: grafana/loki:3.3.2
+    container_name: d6-loki
+    command: ["-config.file=/etc/loki/loki-config.yaml"]
+    volumes:
+      - ./loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
+    ports:
+      - "3100:3100"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    networks:
+      - obs
+
+  promtail:
+    image: grafana/promtail:3.3.2
+    container_name: d6-promtail
+    command: ["-config.file=/etc/promtail/promtail-config.yaml"]
+    volumes:
+      - ./promtail/promtail-config.yaml:/etc/promtail/promtail-config.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+    networks:
+      - obs

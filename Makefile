@@ -48,7 +48,13 @@ D5_DIR := DevOps-Infra/reproducible-dev-env
 # D1 terraform-aws-stack (S3 + Lambda + API GW HTTP v2; offline plan, no AWS account).
 D1_DIR := DevOps-Infra/terraform-aws-stack
 
-.PHONY: help bootstrap doctor setup-env verify test rust node python i1-verify i3-verify i3-flutter-verify i4-verify a1-validate a2-verify a2-docker-smoke a3-integration a3-verify a6-verify agent-platform basics-verify b1-verify b2-verify b3-verify basics-build-test b6-bench d5-verify d1-verify clean
+# D6 observability-bolt-on (FastAPI + structured logs + Prometheus/Grafana/Alertmanager).
+D6_DIR := DevOps-Infra/observability-bolt-on
+
+# D4 kubernetes-manifests (FastAPI workload + hardened k8s manifests; kustomize overlays).
+D4_DIR := DevOps-Infra/kubernetes-manifests
+
+.PHONY: help bootstrap doctor setup-env verify test rust node python i1-verify i3-verify i3-flutter-verify i4-verify a1-validate a2-verify a2-docker-smoke a3-integration a3-verify a6-verify agent-platform basics-verify b1-verify b2-verify b3-verify basics-build-test b6-bench d5-verify d1-verify d6-verify d6-stack-verify d4-verify d4-k8s-validate clean
 
 help:  ## Show available targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) \
@@ -86,7 +92,7 @@ python:  ## Create venv + install + test all Python services
 			&& pip -q install -r requirements.txt && python -m pytest -q ) || exit 1; done
 
 verify: test  ## Alias for the full test suite
-test: rust node python i3-verify i1-verify i4-verify d5-verify d1-verify  ## Run every test suite (Rust + Node + Python + I3 sandbox + I1 ER diagram + I4 polyglot pair + D5 reproducible env + D1 terraform)
+test: rust node python i3-verify i1-verify i4-verify d5-verify d1-verify d6-verify d4-verify  ## Run every test suite (Rust + Node + Python + I3 sandbox + I1 ER diagram + I4 polyglot pair + D5 reproducible env + D1 terraform + D6 observability + D4 kubernetes)
 	@echo "== ALL SUITES PASSED =="
 
 # ---- I1 — ER-diagram artifact (validator + tests + spec-sync; offline) ---------
@@ -216,6 +222,31 @@ d5-verify:  ## Verify D5 (toolchain-pin sync guard + one-command bootstrap: ruff
 # ---- D1 terraform-aws-stack (offline plan + handler tests; no AWS account) -----
 d1-verify:  ## Verify D1 (terraform fmt/validate/offline-plan + tflint/checkov if present + handler tests)
 	@$(RUN) bash $(D1_DIR)/scripts/verify.sh
+
+# ---- D6 observability-bolt-on (offline quality gates; no docker required) -------
+d6-verify:  ## Verify D6 (ruff + mypy --strict + pytest coverage gate; throwaway venv)
+	@echo "== d6: $(D6_DIR) =="
+	@( cd $(D6_DIR) && $(RUN) python -m venv .venv && . .venv/bin/activate \
+		&& pip -q install --upgrade pip && pip -q install -r requirements-dev.txt \
+		&& ruff check . && ruff format --check . \
+		&& mypy app --strict \
+		&& python -m pytest ) || exit 1
+	@echo "== ✅ D6 OBSERVABILITY PASSED =="
+
+d6-stack-verify:  ## Verify D6 full stack end-to-end (requires docker; build->load->scrape->query)
+	@$(RUN) bash $(D6_DIR)/scripts/verify-stack.sh
+
+d4-verify:  ## Verify D4 (ruff + mypy --strict + pytest coverage gate; throwaway venv)
+	@echo "== d4: $(D4_DIR) =="
+	@( cd $(D4_DIR) && $(RUN) python -m venv .venv && . .venv/bin/activate \
+		&& pip -q install --upgrade pip && pip -q install -r requirements-dev.txt \
+		&& ruff check . && ruff format --check . \
+		&& mypy app --strict \
+		&& python -m pytest ) || exit 1
+	@echo "== ✅ D4 KUBERNETES PASSED =="
+
+d4-k8s-validate:  ## Validate D4 manifests offline (kustomize + kubeconform strict + kube-score)
+	@$(RUN) bash $(D4_DIR)/scripts/validate-manifests.sh
 
 # ---- Basics — B1–B6 shared contract + artifact gates + service tests -----------
 basics-verify: b1-verify b2-verify b3-verify basics-build-test b6-bench  ## Verify Basics tier (B1–B6 artifacts + B4/B5 contract + B6)

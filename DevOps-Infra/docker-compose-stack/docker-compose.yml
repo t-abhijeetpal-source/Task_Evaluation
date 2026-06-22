@@ -1,44 +1,79 @@
 name: d2-stack
 
+# Credentials come from `.env` (git-ignored; copy from `.env.example`). The
+# username/db carry non-secret demo defaults so `docker compose config` works
+# without a file, but POSTGRES_PASSWORD has NO default — it must be provided.
 services:
   database:
     image: postgres:16-alpine
+    env_file: .env
     environment:
-      POSTGRES_USER: appuser
-      POSTGRES_PASSWORD: apppass
-      POSTGRES_DB: appdb
+      POSTGRES_USER: ${POSTGRES_USER:-appuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-appdb}
     # Auto-apply schema + fixtures on a fresh database so a clean `up` from zero
     # needs no manual seeding (the file is idempotent; seed.sh remains for re-seeds).
     volumes:
       - ./database/seed.sql:/docker-entrypoint-initdb.d/01-seed.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U appuser -d appdb"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-appuser} -d ${POSTGRES_DB:-appdb}"]
       interval: 5s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
     networks:
       - app-network
 
   api:
     build: ./api
+    env_file: .env
     environment:
-      DATABASE_URL: postgresql://appuser:apppass@database:5432/appdb
+      DATABASE_URL: postgresql://${POSTGRES_USER:-appuser}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB:-appdb}
+      API_KEY: ${API_KEY:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:
       database:
         condition: service_healthy
     ports:
       - "8080:8000"
+    # /health runs a real SELECT 1; the image HEALTHCHECK lets `up --wait` gate on it.
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=2).status==200 else 1)\""]
+      interval: 10s
+      timeout: 3s
+      start_period: 5s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
     networks:
       - app-network
 
   worker:
     build: ./worker
+    env_file: .env
     environment:
-      DATABASE_URL: postgresql://appuser:apppass@database:5432/appdb
-      WORKER_ID: worker-1
+      DATABASE_URL: postgresql://${POSTGRES_USER:-appuser}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB:-appdb}
+      WORKER_ID: ${WORKER_ID:-worker-1}
     depends_on:
       database:
         condition: service_healthy
+    # SIGTERM-driven graceful drain; give it a moment to finish the in-flight batch.
+    stop_grace_period: 10s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
     networks:
       - app-network
 

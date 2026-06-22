@@ -1,0 +1,11 @@
+target-version = "py312"
+line-length = 100
+
+[lint]
+# E/F  pycodestyle + pyflakes   I  import sorting       UP  pyupgrade
+# B    bugbear                  S  bandit (security)    SIM simplify   RUF ruff
+select = ["E", "F", "I", "UP", "B", "S", "SIM", "RUF"]
+
+[lint.per-file-ignores]
+# Asserts are the whole point of a test; subprocess/security lints don't apply.
+"tests/**" = ["S101"]

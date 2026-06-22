@@ -1,0 +1,80 @@
+name: D6 Observability
+
+# Validates the observability bolt-on on every change:
+#   unit ─┐  (ruff + mypy + pytest/coverage + pip-audit)
+#   e2e  ─┴─ (verify-stack.sh: build → load → Prometheus target UP → PromQL)
+on:
+  push:
+    paths:
+      - "DevOps-Infra/observability-bolt-on/**"
+      - ".github/workflows/d6-observability.yml"
+  pull_request:
+    paths:
+      - "DevOps-Infra/observability-bolt-on/**"
+      - ".github/workflows/d6-observability.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d6-observability-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: DevOps-Infra/observability-bolt-on
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # ---- Lint · type-check · tests/coverage · dependency audit ------------------
+  unit:
+    name: Lint · Types · Tests · Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: DevOps-Infra/observability-bolt-on/requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+
+      - name: ruff (lint + format)
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: mypy --strict
+        run: mypy app --strict
+
+      - name: pytest (coverage gate ≥80%)
+        run: python -m pytest
+
+      - name: pip-audit (runtime deps)
+        run: pip-audit -r requirements.txt
+
+      - run: echo "### ✅ ruff · mypy · pytest (cov ≥80%) · pip-audit passed" >> "$GITHUB_STEP_SUMMARY"
+
+  # ---- Full-stack end-to-end (docker compose on the runner) -------------------
+  e2e:
+    name: Stack E2E (compose)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Validate compose + rules
+        run: |
+          docker compose config -q
+          docker run --rm --entrypoint promtool \
+            -v "$PWD/prometheus:/p" prom/prometheus:v2.55.1 \
+            check rules /p/alerts.yml /p/recording_rules.yml
+
+      - name: verify-stack.sh (build → load → scrape → query)
+        run: bash scripts/verify-stack.sh
+
+      - run: echo "### ✅ Full telemetry chain verified end-to-end" >> "$GITHUB_STEP_SUMMARY"

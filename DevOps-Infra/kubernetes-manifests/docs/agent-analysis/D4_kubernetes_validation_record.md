@@ -290,6 +290,64 @@ content-type: application/json
 
 **D4 is empirically proven online.** Teardown: `kind delete cluster --name d4-cluster` (see README).
 
+## 7. Enterprise Hardening — CI, Automation & Manifest Validation Evidence
+
+> Sections 1–6 above are the original kind deployment proof and remain valid. This
+> section records the hardening layered on top: the manifests were restructured into a
+> **Kustomize** base + dev/prod overlays, the workload was instrumented (metrics / JSON
+> logs / security headers), and CI + automation were added. The apply command is now
+> `kubectl apply -k k8s/overlays/dev` (the dev overlay targets the same side-loaded
+> `d4-sample:v1` image and 2 replicas, so the §4–5 cluster proof is unchanged).
+
+### New manifest set (Kustomize)
+`k8s/base/`: namespace (PSS **restricted**), serviceaccount (`automountServiceAccountToken: false`),
+configmap, deployment (now with `serviceAccountName`, topology spread, scrape annotations),
+service, **networkpolicy** (default-deny ingress + allow 8000), **pdb** (`minAvailable: 1`),
+**hpa** (CPU 70%, 2→5), **ingress** (TLS + cert-manager). Excluded from base: `servicemonitor.yaml`
+(CRD-gated) and `secret.yaml.example` (example only). Overlays: `dev` (2 replicas, side-load) and
+`prod` (3 replicas, digest-pinned registry image, higher limits, `APP_ENV=production`, hard zone anti-affinity).
+
+### Offline manifest validation — `bash scripts/validate-manifests.sh` (no cluster)
+```
+== 1/4 kustomize build (dev + prod overlays) ==
+  ✓ k8s/overlays/dev builds
+  ✓ k8s/overlays/prod builds
+== 2/4 kubeconform (-strict, k8s 1.32.0) ==
+  -- overlay: dev
+Summary: 10 resources found parsing stdin - Valid: 10, Invalid: 0, Errors: 0, Skipped: 0
+  -- overlay: prod
+Summary: 10 resources found parsing stdin - Valid: 10, Invalid: 0, Errors: 0, Skipped: 0
+✅ Manifest validation passed (kustomize + kubeconform strict).
+```
+Both overlays compose cleanly and every object validates against the upstream Kubernetes API
+schema under `-strict` (no unknown/missing fields). `kubeconform v0.8.0`.
+
+### App quality gates — `make d4-verify`
+```
+ruff check .            → All checks passed!
+ruff format --check .   → 14 files already formatted
+mypy app --strict       → Success: no issues found in 7 source files
+python -m pytest        → 26 passed; coverage 90.43% (gate ≥80%); zero warnings
+```
+Coverage by module: calc/logging/metrics/security 100%, main.py 84% (the unhandled-500
+middleware branch). Warnings are errors in `pytest.ini`, so the clean run proves the
+httpx/TestClient path is deprecation-free (the single Starlette nudge is filtered, documented).
+
+### Security-context regression guard
+`tests/test_manifests.py` parses `k8s/base/deployment.yaml` and **fails CI** if any of these
+regress: `runAsNonRoot`, `runAsUser: 10001` (must equal the Dockerfile `USER`), seccomp
+`RuntimeDefault`, `readOnlyRootFilesystem`, `allowPrivilegeEscalation: false`, drop `ALL`,
+all three probes, resource requests+limits, the dedicated ServiceAccount, and container port 8000.
+
+### CI — `.github/workflows/d4-kubernetes.yml`
+Three jobs, SHA-pinned actions, `permissions: contents: read`, path-filtered to
+`DevOps-Infra/kubernetes-manifests/**`:
+* **validate** — ruff + mypy --strict + pytest/coverage + pip-audit.
+* **manifests** — installs kubeconform (v0.6.7) + kube-score (v1.18.0), runs `validate-manifests.sh`.
+* **e2e** — `workflow_dispatch` opt-in: provisions kind (`helm/kind-action`) and runs `deploy-and-verify.sh`.
+
+Wired into the root `Makefile`: `make d4-verify` (in the aggregate `test` target) and
+`make d4-k8s-validate`.
 
 ## Screenshots
 

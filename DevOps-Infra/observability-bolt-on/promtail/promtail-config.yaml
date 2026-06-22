@@ -1,0 +1,25 @@
+# Promtail — discovers compose containers via the Docker socket and ships their
+# stdout to Loki. The d6-app emits one JSON object per line, so Loki's `| json`
+# parser exposes request_id / status_code / duration_ms / trace_id as fields.
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      # Expose the container name (e.g. "d6-app") as a Loki label.
+      - source_labels: ["__meta_docker_container_name"]
+        regex: "/(.*)"
+        target_label: container
+      - source_labels: ["__meta_docker_container_log_stream"]
+        target_label: stream

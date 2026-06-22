@@ -1,0 +1,22 @@
+# Production hardening overlay.
+#   docker compose -f docker-compose.yml -f compose.prod.yml up -d
+#
+# Tightens the demo defaults: no anonymous Grafana, a REQUIRED admin password,
+# and the Prometheus/Grafana/Alertmanager UIs bound to loopback only (front them
+# with an authenticated reverse proxy rather than exposing them publicly).
+services:
+  grafana:
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      # Fails fast if unset — no weak default in prod.
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set a strong GRAFANA_ADMIN_PASSWORD}
+    ports:
+      - "127.0.0.1:3000:3000"
+
+  prometheus:
+    ports:
+      - "127.0.0.1:9090:9090"
+
+  alertmanager:
+    ports:
+      - "127.0.0.1:9093:9093"

@@ -1,0 +1,44 @@
+groups:
+  - name: d6-service-alerts
+    rules:
+      # Page when the app stops being scrapeable (crash, OOM, network).
+      - alert: TargetDown
+        expr: up{job="d6-app"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          service: d6-sample
+        annotations:
+          summary: "D6 app target is down"
+          description: "Prometheus has not scraped {{ $labels.instance }} for 30s (up == 0)."
+
+      # Sustained 5xx error ratio above 5% of total traffic over 5m.
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(http_request_errors_total{service="d6-sample",status_code=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(http_requests_total{service="d6-sample"}[5m])), 0.001)
+          ) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+          service: d6-sample
+        annotations:
+          summary: "High 5xx error rate (>5%)"
+          description: "5xx error ratio is {{ $value | humanizePercentage }} over the last 5m."
+
+      # Latency SLO burn: p95 request latency above 500ms for 5m.
+      - alert: HighLatencyP95
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(http_request_duration_seconds_bucket{service="d6-sample"}[5m]))
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          service: d6-sample
+        annotations:
+          summary: "p95 latency above 500ms"
+          description: "p95 request latency is {{ $value | humanizeDuration }} over the last 5m."

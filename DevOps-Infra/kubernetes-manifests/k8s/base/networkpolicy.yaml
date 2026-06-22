@@ -1,0 +1,54 @@
+# Two policies, applied together:
+#   1. default-deny-ingress — once ANY ingress policy selects a pod, all
+#      non-matching traffic is dropped. This blanket policy makes deny the
+#      default for every pod in the namespace.
+#   2. allow-app-ingress — re-opens exactly port 8000 on the app pods, and only
+#      from the namespaces that should reach it.
+#
+# Note: kubelet liveness/readiness probes originate from the node and are not
+# subject to NetworkPolicy in standard CNIs, so the probes keep working.
+# (kind's default CNI, kindnet, does not enforce NetworkPolicy at all — these
+# policies are validated structurally here and enforced on a real CNI such as
+# Calico/Cilium in production.)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: d4-sample
+  labels:
+    app.kubernetes.io/name: d4-sample
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-app-ingress
+  namespace: d4-sample
+  labels:
+    app.kubernetes.io/name: d4-sample
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: d4-sample
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        # Same-namespace clients (e.g. an in-cluster caller).
+        - namespaceSelector:
+            matchLabels:
+              name: d4-sample
+        # The ingress controller (label your ingress-nginx namespace to match).
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+        # Prometheus scraping /metrics from a monitoring namespace.
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8000

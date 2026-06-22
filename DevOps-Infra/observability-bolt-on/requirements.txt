@@ -2,3 +2,8 @@ fastapi==0.137.1
 uvicorn[standard]==0.49.0
 pydantic==2.13.4
 prometheus-client==0.21.1
+
+# Optional distributed tracing (only used when OTEL_ENABLED=true). Imported
+# lazily so the service still runs if these are stripped from a slim build.
+opentelemetry-sdk==1.42.1
+opentelemetry-exporter-otlp-proto-http==1.42.1

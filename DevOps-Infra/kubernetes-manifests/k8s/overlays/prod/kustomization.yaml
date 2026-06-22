@@ -1,0 +1,73 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Prod = pull a pinned image from a real registry, run more replicas with
+# headroom, and surface APP_ENV=production. Everything else is inherited from
+# base (probes, securityContext, NetworkPolicy, PDB, HPA, topology spread).
+resources:
+  - ../../base
+
+labels:
+  - pairs:
+      app.kubernetes.io/environment: prod
+    includeSelectors: false
+
+# Registry image, digest-pinned for an immutable, verifiable rollout.
+# Repin: docker buildx imagetools inspect ghcr.io/example/d4-sample:1.0.0
+images:
+  - name: d4-sample
+    newName: ghcr.io/example/d4-sample
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+
+# Initial replicas (HPA scales 3→10 at runtime via the patch below).
+replicas:
+  - name: d4-sample
+    count: 3
+
+patches:
+  # Registry images must be pulled (the side-load IfNotPresent is dev-only).
+  - target:
+      kind: Deployment
+      name: d4-sample
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: "100m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "128Mi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "500m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "256Mi"
+      # In prod we want hard anti-affinity across zones for the rollout.
+      - op: replace
+        path: /spec/template/spec/topologySpreadConstraints/0/whenUnsatisfiable
+        value: DoNotSchedule
+  # Wider autoscaling envelope in prod.
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: d4-sample
+    patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 3
+      - op: replace
+        path: /spec/maxReplicas
+        value: 10
+  # Announce the production environment over GET /.
+  - target:
+      kind: ConfigMap
+      name: d4-config
+    patch: |-
+      - op: replace
+        path: /data/APP_ENV
+        value: production
+      - op: replace
+        path: /data/APP_GREETING
+        value: hello from D4 (production)

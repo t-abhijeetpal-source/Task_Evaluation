@@ -1,0 +1,19 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Local env / secrets (never commit rendered secrets — see k8s/base/secret.yaml.example)
+.env
+*.secret.yaml
+secret.yaml
+
+# OS / editor
+.DS_Store

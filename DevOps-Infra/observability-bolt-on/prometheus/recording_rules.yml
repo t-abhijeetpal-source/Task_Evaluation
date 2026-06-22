@@ -1,0 +1,30 @@
+groups:
+  # Pre-computed SLI series backing the SLO doc (docs/SLO.md) and the error-budget
+  # panel. Recording rules keep dashboard/alert queries cheap and consistent.
+  - name: d6-slo-sli
+    interval: 15s
+    rules:
+      # Total request throughput (req/s).
+      - record: job:http_requests:rate5m
+        expr: sum(rate(http_requests_total{service="d6-sample"}[5m]))
+
+      # 5xx error throughput (req/s) — the "bad events" numerator.
+      - record: job:http_errors_5xx:rate5m
+        expr: sum(rate(http_request_errors_total{service="d6-sample",status_code=~"5.."}[5m]))
+
+      # Availability SLI: fraction of successful (non-5xx) requests over 5m.
+      - record: job:slo_availability:ratio5m
+        expr: |
+          1 - (
+            job:http_errors_5xx:rate5m
+            /
+            clamp_min(job:http_requests:rate5m, 0.001)
+          )
+
+      # Latency SLI: p95 request latency in seconds.
+      - record: job:http_request_latency:p95_5m
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(http_request_duration_seconds_bucket{service="d6-sample"}[5m]))
+          )

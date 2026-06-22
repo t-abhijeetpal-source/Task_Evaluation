@@ -9,16 +9,27 @@ JSON object per log record on stdout. Every request log carries:
 import json
 import logging
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-# Extra fields we promote from `record` (set via `logger.info(..., extra={...})`)
-_CONTEXT_FIELDS = ("request_id", "method", "path", "status_code", "duration_ms", "client")
+# Extra fields we promote from `record` (set via `logger.info(..., extra={...})`).
+# `trace_id`/`span_id` are present only when OpenTelemetry tracing is enabled,
+# letting a log line be joined to its distributed trace.
+_CONTEXT_FIELDS = (
+    "request_id",
+    "method",
+    "path",
+    "status_code",
+    "duration_ms",
+    "client",
+    "trace_id",
+    "span_id",
+)
 
 
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         payload = {
-            "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
+            "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),

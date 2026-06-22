@@ -82,6 +82,8 @@ http_requests_total{method="GET",path="/",status_code="200"} 80.0
 http_requests_total{method="GET",path="/add",status_code="422"} 80.0
 http_requests_total{method="GET",path="/error",status_code="500"} 40.0
 http_requests_total{method="GET",path="/does-not-exist",status_code="404"} 40.0
+# NOTE: after the cardinality guard (§7.6), unmatched 404 URLs now collapse to a
+# single label — i.e. this line reads path="/_unmatched" in the hardened build.
 
 # HELP http_request_errors_total HTTP responses with status code >= 400.
 # TYPE http_request_errors_total counter
@@ -205,6 +207,103 @@ docker compose down -v
   3. **Structured logging required silencing uvicorn's own access logger** (`uvicorn.access` handlers cleared, `propagate=False`) — otherwise duplicate plain-text lines leaked alongside the JSON. Verified: container stdout is pure JSON lines.
   4. All metric/log field names, the Prometheus `UP` state, and the Grafana panel values in this document are copied from real command output, not assumed from library docs.
 
+
+## 7. Enterprise Hardening (remediation evidence)
+
+The baseline above (live telemetry chain) is preserved. The metric **names and
+labels are unchanged** — all dashboard PromQL and the `service="d6-sample"` label
+still hold — so the hardening below is additive. Each item lists the command used
+to verify it.
+
+### 7.1 Quality gates (run in a clean venv — Python 3.12.8 via mise)
+```
+$ ruff check . && ruff format --check .
+All checks passed!   ·   15 files already formatted
+$ mypy app --strict
+Success: no issues found in 8 source files
+$ pytest            # pytest.ini: --cov=app --cov-fail-under=80, filterwarnings=error
+24 passed in 0.28s
+TOTAL  168 stmts  1 miss  99% coverage   (gate: 80%)
+$ pip-audit -r requirements.txt
+No known vulnerabilities found
+```
+Test count grew 5 → **24** across `test_app/test_logging/test_metrics/test_middleware/test_tracing`.
+Coverage gate is enforced in `pytest.ini` and in CI. Zero warnings (the lone
+Starlette→`httpx2` deprecation is documented and filtered, not chased — httpx2 is
+not yet a stable dependency).
+
+### 7.2 Prometheus alerting (validated with the real promtool)
+```
+$ docker run --rm --entrypoint promtool -v "$PWD/prometheus:/p" prom/prometheus:v2.55.1 \
+    check rules /p/alerts.yml /p/recording_rules.yml
+Checking /p/alerts.yml           SUCCESS: 3 rules found
+Checking /p/recording_rules.yml  SUCCESS: 4 rules found
+$ promtool check config /etc/prometheus/prometheus.yml   # rules mounted at container paths
+SUCCESS: 2 rule files found · prometheus.yml is valid prometheus config file syntax
+$ amtool check-config alertmanager/alertmanager.yml
+SUCCESS  (global config · route · 1 inhibit rule · 1 receiver)
+```
+Alerts: `TargetDown` (`up{job="d6-app"}==0`), `HighErrorRate` (5xx ratio > 5%),
+`HighLatencyP95` (p95 > 500ms). Recording rules pre-compute the SLI series backing
+`docs/SLO.md`. Prometheus routes firing alerts to a new `alertmanager:9093` service.
+
+### 7.3 Compose hardening (all four variants parse)
+```
+$ docker compose config -q                                            # base → OK
+$ GRAFANA_ADMIN_PASSWORD=x docker compose -f docker-compose.yml -f compose.prod.yml config -q   # OK
+$ docker compose -f docker-compose.yml -f compose.prod.yml config -q  # without pw →
+  error: required variable GRAFANA_ADMIN_PASSWORD is missing a value   # fails fast, as intended
+$ docker compose -f docker-compose.yml -f compose.tracing.yml config -q   # OK
+$ docker compose -f docker-compose.yml -f compose.logs.yml config -q      # OK
+```
+Grafana admin password is env-driven (demo default `admin` documented in
+`.env.example`); `compose.prod.yml` disables anonymous viewing, **requires** a
+password, and binds the Prometheus/Grafana/Alertmanager UIs to loopback. Every
+service has CPU/memory `deploy.resources.limits`. The Dockerfile base is
+**digest-pinned** (`python:3.12-slim@sha256:d764629c…`, verified against the
+pulled image) and still runs as non-root `USER 10001`.
+
+### 7.4 Security response headers
+`app/middleware/security.py` adds `X-Content-Type-Options: nosniff`,
+`X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`,
+`Cross-Origin-Opener-Policy: same-origin`, and a `Permissions-Policy` to every
+response (asserted on `/health` and the 500 path by `test_middleware.py`). A
+strict CSP is deliberately omitted so Swagger `/docs` keeps working (documented in
+the module).
+
+### 7.5 Optional OpenTelemetry tracing (feature-flagged)
+`app/tracing.py` is a no-op unless `OTEL_ENABLED=true`. When on, it installs an
+OTLP/HTTP exporter (→ Jaeger via `compose.tracing.yml`) and injects `trace_id` /
+`span_id` into every JSON access log for log↔trace correlation. `test_tracing.py`
+proves a span is produced and exported using an in-memory exporter:
+```
+$ pytest tests/test_tracing.py -q   →   2 passed
+  (asserts span name "GET /health" exported; log line carries a 32-hex trace_id)
+```
+
+### 7.6 Cardinality guard
+`_route_template()` now returns `/_unmatched` for any path with no matched route,
+so 404 scans/bots cannot mint unbounded time series. Proven by
+`test_middleware.py::test_unmatched_route_uses_normalized_label`.
+
+### 7.7 CI + scripted verification
+`.github/workflows/d6-observability.yml` (SHA-pinned actions, `permissions:
+contents: read`, paths filter on `DevOps-Infra/observability-bolt-on/**`) runs two
+jobs: **unit** (ruff + mypy + pytest/coverage + pip-audit) and **e2e**
+(`scripts/verify-stack.sh`: build → load → assert target UP → PromQL non-empty →
+rules loaded). Root `make d6-verify` runs the offline gates; `make d6-stack-verify`
+runs the e2e script.
+
+### 7.8 Adversarial note on this remediation pass
+The **live** full-stack run (load → Prometheus → Grafana) could **not** be
+re-executed in this environment: the local Docker daemon's containerd content
+store became corrupted mid-session (`input/output error` reading image blobs,
+traced to a full host disk). Rather than fabricate fresh dashboard numbers, the
+baseline live evidence in §2–4 is retained as-is, and every **new** artifact above
+is verified by the strongest offline means available — the real `promtool`,
+`amtool`, and `docker compose config` binaries, plus the unit suite. The live
+chain is exercised on every push by the CI `e2e` job, which runs the same
+`verify-stack.sh` on a clean Ubuntu runner with a healthy Docker.
 
 ## Screenshots
 

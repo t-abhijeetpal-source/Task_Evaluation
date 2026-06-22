@@ -12,3 +12,4 @@ data:
   APP_ENV: "kind-local"
   APP_GREETING: "hello from D4 on Kubernetes"
   APP_VERSION: "1.0.0"
+  LOG_LEVEL: "INFO"

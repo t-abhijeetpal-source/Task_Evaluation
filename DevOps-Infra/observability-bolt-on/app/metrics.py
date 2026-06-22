@@ -8,8 +8,13 @@ cardinality — the matched route, not the raw URL):
 Plus the default process/runtime collectors shipped by prometheus_client.
 """
 
-from prometheus_client import CollectorRegistry, Counter, Histogram, ProcessCollector
-from prometheus_client import PlatformCollector
+from prometheus_client import (
+    CollectorRegistry,
+    Counter,
+    Histogram,
+    PlatformCollector,
+    ProcessCollector,
+)
 
 # Dedicated registry so tests can introspect deterministically.
 REGISTRY = CollectorRegistry()

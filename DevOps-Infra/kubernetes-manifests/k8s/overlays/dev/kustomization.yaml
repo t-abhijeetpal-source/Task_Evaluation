@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Dev = the local kind workflow. The base already targets the side-loaded
+# image (d4-sample:v1, imagePullPolicy IfNotPresent) and 2 replicas, so this
+# overlay is intentionally thin — it just stamps the environment label.
+resources:
+  - ../../base
+
+labels:
+  - pairs:
+      app.kubernetes.io/environment: dev
+    includeSelectors: false
+
+# Make the ConfigMap announce the dev environment over GET /.
+patches:
+  - target:
+      kind: ConfigMap
+      name: d4-config
+    patch: |-
+      - op: replace
+        path: /data/APP_ENV
+        value: kind-local

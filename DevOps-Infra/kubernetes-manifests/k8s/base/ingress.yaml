@@ -1,7 +1,12 @@
-# Optional. Routes external HTTP to the ClusterIP Service.
+# Optional. Routes external HTTP(S) to the ClusterIP Service.
 # Requires an ingress controller (e.g. ingress-nginx) in the cluster.
 # The primary network proof in the validation record uses `kubectl port-forward`,
 # which needs no controller; this manifest is included and dry-run validated.
+#
+# TLS: the `tls` block + cert-manager annotation below request a certificate
+# automatically (cert-manager must be installed with a `letsencrypt-prod`
+# ClusterIssuer). On kind without cert-manager this is inert — the
+# port-forward proof path does not depend on it.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -11,8 +16,16 @@ metadata:
     app.kubernetes.io/name: d4-sample
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
+    # Redirect HTTP→HTTPS at the edge.
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # cert-manager: issue + renew the TLS cert referenced by spec.tls.
+    cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
   ingressClassName: nginx
+  tls:
+    - hosts:
+        - d4-sample.local
+      secretName: d4-sample-tls
   rules:
     - host: d4-sample.local
       http:

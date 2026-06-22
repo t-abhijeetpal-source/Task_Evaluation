@@ -15,29 +15,43 @@ Evidence: [`docs/agent-analysis/D6_observability_record.md`](docs/agent-analysis
 flowchart LR
     LG["generate-load.sh"] -->|HTTP| APP["app:8000<br/>FastAPI + /metrics"]
     PROM["prometheus:9090"] -->|scrape /metrics 5s| APP
+    PROM -->|fire alerts| AM["alertmanager:9093"]
     GRAF["grafana:3000<br/>provisioned dashboard"] -->|datasource proxy| PROM
 ```
 
 ## Layout
 
 ```
-D6/
+observability-bolt-on/
 ├── app/
 │   ├── main.py            # FastAPI + observability middleware + /metrics route
-│   ├── logging_setup.py   # JSON structured logging
+│   ├── logging_setup.py   # JSON structured logging (+ trace correlation)
 │   ├── metrics.py         # prometheus-client counters + histogram
+│   ├── tracing.py         # optional OpenTelemetry tracing (feature-flagged)
+│   ├── middleware/security.py  # security response headers
 │   └── calc.py
-├── tests/                 # pytest (5 tests)
-├── Dockerfile             # non-root app image
-├── docker-compose.yml     # app + prometheus + grafana
-├── prometheus/prometheus.yml
+├── tests/                 # pytest (24 tests, ≥80% coverage gate)
+├── Dockerfile             # non-root (UID 10001), digest-pinned base
+├── docker-compose.yml     # app + prometheus + alertmanager + grafana
+├── compose.prod.yml       # prod overlay (no anon, password required, loopback UIs)
+├── compose.tracing.yml    # tracing overlay (Jaeger all-in-one)
+├── compose.logs.yml       # log overlay (Loki + Promtail)
+├── prometheus/
+│   ├── prometheus.yml      # scrape + rule_files + alerting
+│   ├── alerts.yml          # TargetDown · HighErrorRate · HighLatencyP95
+│   └── recording_rules.yml # SLI series for SLO/error-budget
+├── alertmanager/alertmanager.yml
 ├── grafana/provisioning/
-│   ├── datasources/datasource.yml      # Prometheus datasource (as code)
-│   └── dashboards/
-│       ├── dashboards.yml              # file provider
-│       └── d6-dashboard.json           # 4-panel dashboard (as code)
-├── scripts/generate-load.sh
-└── docs/agent-analysis/
+│   ├── datasources/        # Prometheus (+ Loki) datasources (as code)
+│   └── dashboards/         # file provider + 4-panel dashboard (as code)
+├── scripts/
+│   ├── generate-load.sh    # mixed-traffic load generator
+│   └── verify-stack.sh     # scripted end-to-end stack verification
+├── Makefile                # test / lint / typecheck / up / down / verify
+├── pytest.ini · ruff.toml · mypy.ini · .env.example
+└── docs/
+    ├── SLO.md · RUNBOOK.md
+    └── agent-analysis/
 ```
 
 ## Endpoints
@@ -82,12 +96,54 @@ curl -s -X POST 'http://admin:admin@localhost:3000/api/ds/query' -H 'Content-Typ
   -d '{"queries":[{"refId":"A","datasource":{"type":"prometheus","uid":"prometheus"},"expr":"sum by (status_code) (rate(http_requests_total{service=\"d6-sample\"}[1m]))","instant":true}]}'
 ```
 
-## Tests (no stack needed)
+## Profiles (demo vs prod) + overlays
 
 ```bash
+# Demo (default): admin/admin, anonymous read-only viewer enabled.
+docker compose up -d --build
+
+# Prod hardening: no anonymous access, GRAFANA_ADMIN_PASSWORD required,
+# Prometheus/Grafana/Alertmanager UIs bound to loopback only.
+export GRAFANA_ADMIN_PASSWORD='<strong-password>'
+docker compose -f docker-compose.yml -f compose.prod.yml up -d --build
+
+# Optional overlays (compose -f docker-compose.yml -f <overlay> up -d):
+#   compose.tracing.yml  → Jaeger + OTEL_ENABLED=true (UI :16686)
+#   compose.logs.yml     → Loki + Promtail (Grafana "Loki" datasource)
+```
+
+## Alerting
+
+Prometheus evaluates [`prometheus/alerts.yml`](prometheus/alerts.yml) and routes
+firing alerts to Alertmanager:
+
+| Alert | Condition |
+|---|---|
+| `TargetDown` | `up{job="d6-app"} == 0` for 30s |
+| `HighErrorRate` | 5xx ratio > 5% for 2m |
+| `HighLatencyP95` | p95 latency > 500ms for 5m |
+
+```bash
+curl -s http://localhost:9090/api/v1/rules        # rules loaded
+curl -s http://localhost:9093/api/v2/alerts | jq . # active alerts in Alertmanager
+```
+
+SLOs + error-budget policy: [`docs/SLO.md`](docs/SLO.md) · triage: [`docs/RUNBOOK.md`](docs/RUNBOOK.md)
+
+## Tests + quality gates (no stack needed)
+
+```bash
+make check          # ruff + mypy --strict + pytest (coverage ≥80%, zero warnings)
+# or manually:
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements-dev.txt
-python -m pytest tests/ -q
+ruff check . && ruff format --check . && mypy app --strict && pytest
+```
+
+## End-to-end stack verification
+
+```bash
+./scripts/verify-stack.sh    # build → load → assert target UP + PromQL non-empty + rules loaded
 ```
 
 ## Teardown
@@ -102,4 +158,5 @@ docker compose down -v       # stop + remove containers, network, volumes
 |---|---|
 | App | http://localhost:8000 (`/metrics`) |
 | Prometheus | http://localhost:9090 |
-| Grafana | http://localhost:3000 (admin/admin) |
+| Alertmanager | http://localhost:9093 |
+| Grafana | http://localhost:3000 (admin/admin — demo default) |
